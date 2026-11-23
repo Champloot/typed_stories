@@ -2,6 +2,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <sys/stat.h>
 #include <time.h>
 
 #include "util.h"
@@ -12,10 +13,21 @@ double now(void) {
     return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
 }
 
-void shuffle(int *a, int n) {
-    for (int i = n - 1; i > 0; i--) {
-        int j = rand() % (i + 1), t = a[i]; a[i] = a[j]; a[j] = t;
-    }
+// $XDG_DATA_HOME/typed_stories/<file>, or ~/.local/share/typed_stories/<file>.
+// Returns 0 (and an empty path) when there is no home to keep files in.
+int data_path(char *out, size_t cap, const char *file) {
+    const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
+    if (xdg && *xdg)        snprintf(out, cap, "%s/typed_stories/%s", xdg, file);
+    else if (home && *home) snprintf(out, cap, "%s/.local/share/typed_stories/%s", home, file);
+    else { out[0] = '\0'; return 0; }
+    return 1;
+}
+
+void mkdirs_for(const char *file) {
+    char tmp[1024];
+    snprintf(tmp, sizeof tmp, "%s", file);
+    for (char *p = tmp + 1; *p; p++)
+        if (*p == '/') { *p = '\0'; mkdir(tmp, 0755); *p = '/'; }
 }
 
 void *xrealloc(void *p, size_t n) {

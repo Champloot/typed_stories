@@ -5,7 +5,8 @@
 #include "common.h"
 
 double now(void);
-void shuffle(int *a, int n);
+int data_path(char *out, size_t cap, const char *file);
+void mkdirs_for(const char *file);
 void *xrealloc(void *p, size_t n);
 char *xstrdup(const char *s);
 void normalize(const char *in, char *out, size_t cap);

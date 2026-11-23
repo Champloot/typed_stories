@@ -1,6 +1,8 @@
 // pack: pack files: scenarios, variants, choices, flags and conditions
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
+#include <strings.h>
 
 #include "pack.h"
 #include "lexicon.h"
@@ -8,6 +10,51 @@
 
 Pack   *packs;
 int     npacks;
+
+/* Flags the game sets by itself at the start of a run; packs may check them. */
+static const char *const builtin_flags[] = {
+    FLAG_WORDSMITH,     // the word of the day was used on WORDSMITH_DAYS different days
+    FLAG_TODAY,         // the run is the Today one (the same day for everyone)
+};
+
+static int is_builtin_flag(const char *name) {
+    for (size_t i = 0; i < sizeof builtin_flags / sizeof *builtin_flags; i++)
+        if (!strcmp(builtin_flags[i], name)) return 1;
+    return 0;
+}
+
+int pack_flag(const Pack *pk, const char *name) {
+    for (int i = 0; i < pk->nflags; i++)
+        if (!strcmp(pk->flags[i], name)) return i;
+    return -1;
+}
+
+static int meter_index(const Pack *pk, const char *name) {
+    for (int i = 0; i < pk->nmeters; i++)
+        if (!strcasecmp(pk->meter_names[i], name)) return i;
+    return -1;
+}
+
+// "nerves -1, money +2"
+static void parse_effects(const char *file, int line, const Pack *pk, char *val, Effects *fx) {
+    char *parts[MAX_EFFECTS + 1];
+    int n = split_on(val, ',', parts, MAX_EFFECTS);
+    if (n > MAX_EFFECTS) die_at(file, line, "at most %d meters in one 'effects'", MAX_EFFECTS);
+    for (int i = 0; i < n; i++) {
+        char *sp = strrchr(parts[i], ' ');
+        if (!sp) die_at(file, line, "'effects' is: meter +1, meter -2 (got '%s')", parts[i]);
+        *sp = '\0';
+        char *name = trim(parts[i]);
+        int m = meter_index(pk, name), d;
+        if (m < 0) die_at(file, line, "no meter '%s' (declare it in 'meters:')", name);
+        if (!parse_int(trim(sp + 1), -METER_MAX, METER_MAX, &d) || d == 0)
+            die_at(file, line, "meter change must be a non-zero integer from %d to %d", -METER_MAX, METER_MAX);
+        if (fx->n == MAX_EFFECTS) die_at(file, line, "at most %d meter changes per outcome", MAX_EFFECTS);
+        fx->meter[fx->n] = m;
+        fx->delta[fx->n] = d;
+        fx->n++;
+    }
+}
 
 static Variant *new_variant(const char *file, int line, Scenario *s) {
     if (s->nvariants == MAX_VARIANTS)
@@ -180,6 +227,38 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
                 pk->phases[i].pick = pick;
             }
             pk->nphases = n;
+        } else if (!strcmp(key, "meters")) {
+            if (pk->nmeters) die_at(path, lineno, "second 'meters' line");
+            if (pk->count)   die_at(path, lineno, "'meters' must come before the first scenario");
+            char *parts[MAX_METERS + 1];
+            int n = split_on(val, '|', parts, MAX_METERS);
+            if (n > MAX_METERS) die_at(path, lineno, "at most %d meters", MAX_METERS);
+            for (int i = 0; i < n; i++) {
+                char *name = parts[i];
+                int start = METER_START;
+                char *sp = strrchr(name, ' ');
+                if (sp && all_digits(sp + 1)) {
+                    if (!parse_int(sp + 1, 1, METER_MAX, &start))
+                        die_at(path, lineno, "a meter starts at 1 to %d", METER_MAX);
+                    *sp = '\0';
+                    name = trim(name);
+                }
+                if (!*name) die_at(path, lineno, "empty meter name");
+                for (const char *c = name; *c; c++)
+                    if (!isalpha((unsigned char)*c)) die_at(path, lineno, "meter name '%s' must be one word of letters", name);
+                if (meter_index(pk, name) >= 0) die_at(path, lineno, "meter '%s' is listed twice", name);
+                pk->meter_names[pk->nmeters] = xstrdup(name);
+                pk->meter_start[pk->nmeters] = start;
+                pk->nmeters++;
+            }
+        } else if (!strcmp(key, "ending")) {
+            char *parts[3];
+            int n = split_on(val, '|', parts, 2);
+            if (n != 2 || !*parts[1]) die_at(path, lineno, "'ending' is: meter | what happens when it hits zero");
+            int m = meter_index(pk, parts[0]);
+            if (m < 0) die_at(path, lineno, "no meter '%s' (declare it in 'meters:' first)", parts[0]);
+            if (pk->meter_endings[m]) die_at(path, lineno, "second 'ending' for meter '%s'", parts[0]);
+            pk->meter_endings[m] = xstrdup(parts[1]);
         } else if (!strcmp(key, "scenario")) {
             if (cur) check_scenario(path, cur);
             if (!*val) die_at(path, lineno, "empty scenario title");
@@ -235,11 +314,20 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
             if (n > MAX_SETS) die_at(path, lineno, "at most %d flags in one 'sets'", MAX_SETS);
             for (int i = 0; i < n; i++) {
                 if (!*names[i]) die_at(path, lineno, "empty flag name (check the ',' signs)");
+                if (is_builtin_flag(names[i]))
+                    die_at(path, lineno, "'%s' is set by the game itself, packs can only check it", names[i]);
                 int fi = flag_index(path, lineno, pk, names[i]);
                 pk->flag_is_set[fi] = 1;
                 if (fs->n == MAX_SETS) die_at(path, lineno, "at most %d flags per outcome", MAX_SETS);
                 fs->flag[fs->n++] = fi;
             }
+        } else if (!strcmp(key, "effects")) {
+            Variant *v = cur->nvariants ? &cur->variants[cur->nvariants - 1] : NULL;
+            if (!v || v->last_outcome == -1)
+                die_at(path, lineno, "'effects' must come right after a 'choice' or 'timeout' line");
+            if (!pk->nmeters) die_at(path, lineno, "'effects' used, but the pack has no 'meters:' line");
+            parse_effects(path, lineno, pk, val,
+                          v->last_outcome == -2 ? &v->timeout_fx : &v->choices[v->last_outcome].fx);
         } else if (!strcmp(key, "weight")) {
             Variant *v = cur_variant(path, lineno, cur);
             if (!parse_int(val, 1, 100, &v->weight))
@@ -307,8 +395,12 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
 
     // a flag that is checked but never set is almost always a typo
     for (int i = 0; i < pk->nflags; i++)
-        if (pk->flag_checked[i] && !pk->flag_is_set[i])
+        if (pk->flag_checked[i] && !pk->flag_is_set[i] && !is_builtin_flag(pk->flags[i]))
             die_at(path, pk->flag_checked[i], "flag '%s' is checked here, but no outcome sets it", pk->flags[i]);
+
+    for (int m = 0; m < pk->nmeters; m++)
+        if (!pk->meter_endings[m])
+            die_at(path, lineno, "meter '%s' has no 'ending:' (what happens when it hits zero)", pk->meter_names[m]);
 
     if (pk->nphases) {
         for (int i = 0; i < pk->count; i++) {

@@ -206,6 +206,61 @@ except sp.TimeoutExpired:
     ok = True
 res.append(ok); print(("PASS " if ok else "FAIL ") + "lex_valid_loads".ljust(24), "| loader accepted it")
 
+
+# --- meters, endings, effects
+M = """pack: T
+verdicts: a | b
+meters: Nerves 5 | Money 3
+ending: Nerves | You snap.
+ending: money | Broke.
+
+scenario: S1
+time: 3
+choice: yes | ok | 1
+effects: nerves -1, MONEY +2
+choice: no | meh
+timeout: late
+effects: money -1
+"""
+bad("meters_after_scenario", V + "meters: Luck\n", "'meters' must come before the first scenario")
+bad("meter_start_zero", M.replace("Money 3", "Money 0"), "a meter starts at 1 to 10")
+bad("meter_start_big", M.replace("Money 3", "Money 11"), "a meter starts at 1 to 10")
+bad("meter_name_digits", M.replace("Money 3", "M0ney 3"), "meter name 'M0ney' must be one word of letters")
+bad("meter_twice", M.replace("Money 3", "nerves 3"), "meter 'nerves' is listed twice")
+bad("five_meters", M.replace("Money 3", "Money 3 | A | B | C"), "at most 4 meters")
+bad("missing_ending", M.replace("ending: money | Broke.\n", ""), "meter 'Money' has no 'ending:'")
+bad("ending_unknown_meter", M.replace("ending: money | Broke.", "ending: luck | Unlucky."), "no meter 'luck' (declare it in 'meters:' first)")
+bad("second_ending", M.replace("ending: money | Broke.", "ending: money | Broke.\nending: Money | Again."), "second 'ending' for meter 'Money'")
+bad("ending_no_text", M.replace("ending: money | Broke.", "ending: money"), "'ending' is: meter | what happens when it hits zero")
+bad("effects_no_meters", V + "effects: nerves -1\n", "'effects' used, but the pack has no 'meters:' line")
+bad("effects_before_outcome", M.replace("time: 3\n", "time: 3\neffects: nerves -1\n"), "'effects' must come right after a 'choice' or 'timeout' line")
+bad("effects_unknown_meter", M.replace("effects: money -1", "effects: luck -1"), "no meter 'luck' (declare it in 'meters:')")
+bad("effects_zero", M.replace("effects: money -1", "effects: money 0"), "meter change must be a non-zero integer")
+bad("effects_too_big", M.replace("effects: money -1", "effects: money -11"), "meter change must be a non-zero integer")
+bad("effects_no_number", M.replace("effects: money -1", "effects: money"), "'effects' is: meter +1, meter -2")
+bad("effects_five", M.replace("effects: money -1", "effects: money -1, money -1, money -1, money -1, money -1"), "at most 4 meters in one 'effects'")
+bad("effects_overflow", M.replace("effects: money -1", "effects: money -1, money -1, money -1\neffects: money -1, money -1"), "at most 4 meter changes per outcome")
+# --- built-in flags
+bad("sets_builtin", F.replace("sets: said_yes", "sets: wordsmith"), "'wordsmith' is set by the game itself, packs can only check it")
+bad("sets_builtin_today", F.replace("sets: said_yes", "sets: today"), "'today' is set by the game itself")
+# --- words.lst
+def wordbad(name, words, expect):
+    bad(name, None, expect, files={"01-t.txt": V, "words.lst": words})
+wordbad("word_uppercase", "Hedgehog\n", "words.lst:1: a word of the day is 3 to 20 lowercase letters")
+wordbad("word_short", "ox\n", "a word of the day is 3 to 20 lowercase letters")
+wordbad("word_two_words", "sea urchin\n", "a word of the day is 3 to 20 lowercase letters")
+wordbad("word_twice", "# words\nhedgehog\nhedgehog\n", "words.lst:3: 'hedgehog' is listed twice")
+wordbad("word_in_answers", "hedgehog\nyes\n", "words.lst:2: 'yes' is part of an answer (\"yes\"), pick another word")
+import subprocess as sp
+for nm, files in (("meters_valid", {"01-t.txt": M}),
+                  ("needs_builtin_valid", {"01-t.txt": F.replace("needs: said_yes", "needs: wordsmith or today")}),
+                  ("words_valid", {"01-t.txt": V, "words.lst": "# fine\nhedgehog\nnarwhal\n"})):
+    try:
+        run(nm, files); ok = False
+    except sp.TimeoutExpired:
+        ok = True
+    res.append(ok); print(("PASS " if ok else "FAIL ") + nm.ljust(24), "| loader accepted it")
+
 print(f"\n{sum(res)}/{len(res)} loader cases passed")
 shutil.rmtree(S, ignore_errors=True)
 sys.exit(0 if all(res) else 1)

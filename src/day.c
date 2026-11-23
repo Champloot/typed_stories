@@ -5,12 +5,12 @@
 
 // Variants whose 'if' holds win over plain ones, so a consequence shows up
 // whenever its flags are set. NULL if no variant fits right now.
-const Variant *pick_variant(const Scenario *s, uint64_t flags) {
+const Variant *pick_variant(const Scenario *s, uint64_t flags, Rng *rng) {
     int want_cond = 0, total = 0;
     for (int i = 0; i < s->nvariants; i++)
         if (s->variants[i].has_cond && cond_holds(&s->variants[i].cond, flags)) want_cond = 1;
     for (int pass = 0; pass < 2; pass++) {
-        int r = pass ? rand() % total : 0;
+        int r = pass ? rng_below(rng, total) : 0;
         for (int i = 0; i < s->nvariants; i++) {
             const Variant *v = &s->variants[i];
             int ok = want_cond ? v->has_cond && cond_holds(&v->cond, flags) : !v->has_cond;
@@ -32,14 +32,15 @@ static int scenario_open(const Scenario *s, uint64_t flags) {
 }
 
 // Packs without phases: pinned scenarios go to the ends, the rest is shuffled in between.
-int order_by_slots(const Pack *p, int *order) {
+int order_by_slots(const Pack *p, int *order, uint64_t seed) {
     int n = 0, first = -1, last = -1;
     for (int i = 0; i < p->count; i++) {
         if (p->scen[i].slot == SLOT_FIRST)     first = i;
         else if (p->scen[i].slot == SLOT_LAST) last = i;
         else order[n++] = i;
     }
-    shuffle(order, n);
+    Rng rng = rng_for(seed, RNG_SLOTS, 0);
+    rng_shuffle(&rng, order, n);
     if (first >= 0) {
         memmove(order + 1, order, (size_t)n * sizeof *order);
         order[0] = first;
@@ -52,14 +53,15 @@ int order_by_slots(const Pack *p, int *order) {
 // One phase, built when the day reaches it (so earlier choices count):
 // 'pick' random regular scenarios plus every unlocked scene ('needs:') that
 // is open now, shuffled together.
-int build_phase(const Pack *p, int ph, uint64_t flags, int *out) {
+int build_phase(const Pack *p, int ph, uint64_t flags, int *out, uint64_t seed) {
     int *pool = xrealloc(NULL, (size_t)p->count * sizeof *pool);
     int m = 0, n = 0;
     for (int i = 0; i < p->count; i++) {
         const Scenario *s = &p->scen[i];
         if (s->phase == ph && !s->has_needs && scenario_open(s, flags)) pool[m++] = i;
     }
-    shuffle(pool, m);
+    Rng rng = rng_for(seed, RNG_PHASE, (unsigned)ph);
+    rng_shuffle(&rng, pool, m);
     int pick = p->phases[ph].pick, take = pick && pick < m ? pick : m;
     for (int k = 0; k < take; k++) out[n++] = pool[k];
     for (int i = 0; i < p->count; i++) {
@@ -67,7 +69,7 @@ int build_phase(const Pack *p, int ph, uint64_t flags, int *out) {
         if (s->phase == ph && s->has_needs && scenario_open(s, flags)) out[n++] = i;
     }
     free(pool);
-    shuffle(out, n);
+    rng_shuffle(&rng, out, n);
     return n;
 }
 

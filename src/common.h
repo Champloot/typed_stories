@@ -22,6 +22,12 @@
 #define MAX_SETS      4     // flags one outcome can set
 #define MAX_CLAUSES   4     // conditions joined with ','
 #define MAX_LITS      4     // flags joined with 'or' in one condition
+#define MAX_METERS    4     // Reigns-like meters per pack
+#define METER_MAX     10    // meters live in 0..METER_MAX; 0 ends the day
+#define METER_START   5     // default start value
+#define MAX_EFFECTS   4     // meters one outcome can change
+#define WORD_BONUS    100   // style for the first answer with the word of the day
+#define WORDSMITH_DAYS 5    // days with the word of the day that unlock the 'wordsmith' flag
 
 /* Flags are what the day remembers: an outcome sets them ('sets:'), and later
    variants ('if:') and whole scenes ('needs:') check them. */
@@ -37,6 +43,13 @@ typedef struct {
     int n;
     int flag[MAX_SETS];
 } FlagSet;
+
+/* Meter changes of one outcome ('effects: nerves -1, money +2'). */
+typedef struct {
+    int n;
+    int meter[MAX_EFFECTS];
+    int delta[MAX_EFFECTS];
+} Effects;
 
 /* A phrase the player may type. Text is normalized (see normalize()). */
 typedef struct {
@@ -68,6 +81,7 @@ typedef struct {
     Phrase *ph;     // every phrase that selects this choice
     int     nph, cap;
     FlagSet sets;   // what the day remembers if this happens
+    Effects fx;     // how the meters move if this happens
 } Choice;
 
 /* One hidden version of a scenario. The player sees its detail (the cue)
@@ -79,6 +93,7 @@ typedef struct {
     char   *timeout_text;
     int     timeout_mark;
     FlagSet timeout_sets;
+    Effects timeout_fx;
     int     nchoices;
     Choice  choices[MAX_CHOICES];
     int     has_cond;       // 'if:' given: only possible when cond holds, and then preferred
@@ -116,6 +131,10 @@ typedef struct {
     int       nflags;
     int       flag_is_set[MAX_FLAGS];   // some outcome sets it
     int       flag_checked[MAX_FLAGS];  // line of the first 'if'/'needs' that checks it, 0 if none
+    char     *meter_names[MAX_METERS];  // as written in 'meters:', e.g. "Nerves"
+    int       meter_start[MAX_METERS];
+    char     *meter_endings[MAX_METERS];// what happens when the meter hits 0
+    int       nmeters;
 } Pack;
 
 #endif

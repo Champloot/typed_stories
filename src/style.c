@@ -1,6 +1,4 @@
 // style: style points and phrase heat, kept between runs
-#include <sys/stat.h>
-
 #include "style.h"
 #include "util.h"
 
@@ -28,10 +26,7 @@ double *heat_of(const char *phrase, int create) {
 }
 
 void style_load(void) {
-    const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
-    if (xdg && *xdg)        snprintf(style_file, sizeof style_file, "%s/typed_stories/style.txt", xdg);
-    else if (home && *home) snprintf(style_file, sizeof style_file, "%s/.local/share/typed_stories/style.txt", home);
-    else return;
+    if (!data_path(style_file, sizeof style_file, "style.txt")) return;
     FILE *f = fopen(style_file, "r");
     if (!f) return;
     char line[LINE_BUF];
@@ -46,13 +41,6 @@ void style_load(void) {
         if (*ph) *heat_of(ph, 1) = h;
     }
     fclose(f);
-}
-
-static void mkdirs_for(const char *file) {
-    char tmp[1024];
-    snprintf(tmp, sizeof tmp, "%s", file);
-    for (char *p = tmp + 1; *p; p++)
-        if (*p == '/') { *p = '\0'; mkdir(tmp, 0755); *p = '/'; }
 }
 
 // Best effort: if the file can't be written, style simply doesn't remember.

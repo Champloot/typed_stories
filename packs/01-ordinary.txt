@@ -4,12 +4,17 @@
 # cue: read it before you type. Reactions hint whether you got it right.
 # Marks: +1 good, 0 does not matter, -1 bad, -2 really bad.
 # Choice words are intents from lexicon.lex: the player can answer in many ways.
+# 'effects:' moves the meters (Nerves, Money, People). A meter at zero ends the day.
 # 'sets:' after an outcome makes the day remember it; scenes with 'needs:' at the
 # end of the file appear only when that happened. Night has only such scenes.
 
 pack: An ordinary day
 verdicts: Worst day ever. Go to bed and try again. | A Monday, in spirit. | An okay day. Nobody got hurt. | A good day. You did good. | A perfect day. Suspiciously perfect.
 phases: Morning 2 | Commute 2 | Work 2 | Walk 2 | Store 2 | Evening 1 | Night
+meters: Nerves 7 | Money 5 | People 5
+ending: Nerves | You snap. You go home, pull the blanket over your head and refuse to be an adult until tomorrow.
+ending: Money | Your card is declined. Again. You walk home and have cereal for dinner. Without milk.
+ending: People | Nobody answers your messages anymore. Not your friends. Not even Mom. Especially not Mom.
 
 # ---------------------------------------------------------------- Morning
 
@@ -19,14 +24,18 @@ time: 4
 
 variant: It is Saturday.
 choice: snooze | You sleep two more hours. Glorious. | 1
+effects: nerves +1
 choice: get_up | You are up at seven on a Saturday. For no reason. The birds are confused. | 0
 timeout: You let it ring. The neighbor knocks on the wall. Twice. | -1
+effects: people -1
 
 variant: It is Monday. You have a meeting at nine.
 choice: snooze | You wake up at 9:40. The meeting went great without you. | -1
+effects: nerves -1
 sets: late_for_work
 choice: get_up | You are up. You are a functioning adult. | 1
 timeout: You sleep through it. Your phone shows four missed calls from work. | -2
+effects: nerves -1, people -1
 sets: late_for_work
 
 
@@ -36,13 +45,17 @@ time: 3
 
 variant: The milk starts to rise. Fast.
 choice: stove_off | Saved. The milk settles down, a little embarrassed. | 1
+effects: nerves +1
 choice: wait | The milk climbs out of the pot and explores the stove. | -1
+effects: nerves -1
 sets: milk_burned
 timeout: The milk boils over. The kitchen smells like burnt childhood. | -1
+effects: nerves -1
 sets: milk_burned
 
 variant: You just poured it. The pot is still cold.
 choice: stove_off | You turn it off. Now you have cold milk and no breakfast. | -1
+effects: nerves -1
 choice: wait | You check your phone while it warms up. Perfect timing. | 1
 timeout: You stare at the cold milk. It warms up eventually. Breakfast is late. | 0
 
@@ -53,17 +66,22 @@ time: 4
 
 variant: A courier is holding a box with your name on it.
 choice: open | Your parcel! It is much smaller than the box. | 1
+effects: nerves +1
 choice: ignore | Later you find a note: 'Sorry we missed you.' You were right there. | -1
+effects: money -1
 timeout: The courier leaves. Your parcel goes on a trip without you. | -1
+effects: nerves -1
 
 variant: Two very smiling people with a stack of pamphlets.
 choice: open | You learn a lot about the end of the world. It takes forty minutes. | -1
+effects: nerves -1
 sets: pamphlets_opened
 choice: ignore | They knock twice more, then move on. You hear the neighbor sigh. | 1
 timeout: You stand very still. They leave a pamphlet under the door. | 0
 
 variant: The peephole is foggy. You can't see who it is.
 choice: open | It is the neighbor. He needs salt. You give him salt. | 0
+effects: people +1
 choice: ignore | Footsteps go away. You will never know. | 0
 timeout: Whoever it was is gone. | 0
 
@@ -75,14 +93,18 @@ time: 3
 
 variant: Your neighbor is running toward the lift, waving.
 choice: hold | He squeezes in. 'Thanks!' He smells of good coffee. | 1
+effects: people +1
 sets: neighbor_helped
 choice: close | The doors close in his face. You will see him every day for the rest of your life. | -1
+effects: people -1
 sets: neighbor_snubbed
 timeout: The doors close by themselves. He saw you not pressing the button. | -1
+effects: people -1
 sets: neighbor_snubbed
 
 variant: Your neighbor is running toward the lift. He is carrying a tuba.
 choice: hold | He gets in. So does the tuba. You ride nine floors pressed against the wall. | -1
+effects: nerves -1
 sets: tuba_buddy
 choice: close | The doors close. Somewhere behind them, a tuba sighs. | 0
 timeout: The doors close. Fate made the call. | 0
@@ -99,7 +121,9 @@ timeout: The light turns red while you think. A cyclist says things. | 0
 
 variant: A bus is turning the corner.
 choice: run | The bus driver honks a whole song. You make it, barely, with no dignity. | -2
+effects: nerves -1
 choice: wait | You wait. The bus thunders past. Good call. | 1
+effects: nerves +1
 timeout: You hesitate and the light turns red. The bus thunders past. | 0
 
 
@@ -110,12 +134,16 @@ time: 4
 variant: The navigator on his phone says: 'Turn left.'
 choice: left | Left. The navigator approves. You arrive on time. | 1
 choice: right | Right. The navigator sighs and recalculates. So does the meter. | -1
+effects: money -1
 timeout: You hesitate. The driver goes straight, into the rush hour. The meter is running. | -1
+effects: money -1, nerves -1
 
 variant: His phone is dead. A road sign says CITY CENTER, with an arrow to the right.
 choice: left | Left. You see a lot of the suburbs. The meter sees a lot of money. | -1
+effects: money -1
 choice: right | Right. The driver nods. 'Smart. You should drive.' | 1
 timeout: You hesitate. The driver goes straight, into the rush hour. The meter is running. | -1
+effects: money -1, nerves -1
 
 # ---------------------------------------------------------------- Work
 
@@ -125,13 +153,19 @@ time: 4
 
 variant: It is Friday, 17:55.
 choice: yes | It was not a minute. It was your weekend. | -1
+effects: nerves -1
 choice: busy | 'No worries, Monday then.' You are free. | 1
+effects: nerves +1
 timeout: You stare at the message. He sees 'read'. Then he walks over. | -1
+effects: nerves -1
 
 variant: It is Tuesday morning. He never writes to you.
 choice: yes | He offers you the new project. The good one. | 1
+effects: money +2
 choice: busy | 'Okay, I'll ask Kevin.' Kevin gets the good project. Kevin. | -1
+effects: nerves -1
 timeout: You stare at the message. 'Never mind, I'll ask Kevin.' | -1
+effects: nerves -1
 
 
 scenario: The whole office gathers around a cake and starts to sing.
@@ -140,12 +174,17 @@ time: 6
 
 variant: The cake says: HAPPY BIRTHDAY OLGA.
 choice: sing | You sing on time and on key. Olga cries a little. Good tears. | 1
+effects: people +1
 choice: eat_cake | You go straight for the cake. Nobody judges. Everybody judges. | -1
+effects: people -1
 timeout: You mumble along, half a line behind. Everyone hears. | -1
+effects: people -1
 
 variant: The cake has your name on it.
 choice: sing | You sing along. To yourself. Loudly. People will remember this. | -1
+effects: people -1
 choice: eat_cake | You cut your own cake like a king. The office applauds. | 1
+effects: people +1, nerves +1
 timeout: You stand there smiling while everyone sings at you. It lasts forever. | 0
 
 
@@ -155,12 +194,16 @@ time: 4
 
 variant: The screen says: NO WATER.
 choice: water | You fill the tank. You are the office hero for four minutes. | 1
+effects: people +1
 choice: kick | You kick it. It still has no water. Now it also has a dent. | -1
+effects: money -1
 timeout: Someone else fixes it while you think. They take the first cup. | 0
 
 variant: The water tank is full. Someone put a sticker on the side: KICK HERE.
 choice: water | You add more water. The tank was full. Now the floor is too. | -1
+effects: people -1
 choice: kick | You kick it right on the sticker. Coffee flows. Ancient office wisdom. | 1
+effects: nerves +1
 timeout: Someone else kicks it while you think. They take the first cup. | 0
 
 # ---------------------------------------------------------------- Walk
@@ -172,7 +215,9 @@ time: 4
 variant: It is a sock.
 choice: drop_it | The dog drops it. It was a sock. Not yours. | 1
 choice: allow_eat | The dog finishes the sock. You wish it good digestion. So will the vet. | -1
+effects: money -1
 timeout: You hesitate. The sock is gone. Forever. | -1
+effects: money -1
 
 variant: It is a stick.
 choice: drop_it | The dog drops the stick and looks at you like you cancelled Christmas. | 0
@@ -182,8 +227,10 @@ timeout: The dog decides for you. It is still a stick. | 0
 variant: You can't see what it is. It smells of sausage. There are more pieces in the grass.
 choice: drop_it | The dog drops it. You notice a strange blue powder on it. Good call. | 1
 choice: allow_eat | The dog eats it. Ten minutes later you are running to the vet. | -2
+effects: money -2, nerves -1
 sets: dog_poisoned
 timeout: You hesitate. The dog swallows it. Ten minutes later you are running to the vet. | -2
+effects: money -2, nerves -1
 sets: dog_poisoned
 
 
@@ -193,18 +240,24 @@ time: 5
 
 variant: Your dog wags its tail and leans toward him.
 choice: allow_pet + yes | Your dog melts. He says 'who's a good boy' eleven times. | 0
+effects: nerves +1
 choice: rude + no | He pulls his hand back. 'Sorry, sorry.' He looks a little hurt. | 0
+effects: people -1
 timeout: You freeze. He pets the dog anyway. Everyone is fine. | 0
 
 variant: Your dog growls quietly. Its ears are flat.
 choice: allow_pet + yes | Your dog nips his finger. Now you know his lawyer's name. | -2
+effects: money -2, people -1
 choice: rude + no | 'Fair enough,' he says to the dog. 'Grumpy one, huh.' | 1
 timeout: He pets it anyway. The dog nips him. You both say sorry a lot. | -1
+effects: people -1
 
 variant: He has a leash in his other hand. There is no dog on it.
 choice: allow_pet + yes | He grabs your dog's collar. You get it back after a short, loud chase. | -2
+effects: nerves -2
 choice: rude + no | He tsks and walks away fast. The empty leash swings. | 1
 timeout: He reaches for the collar. You pull the leash away just in time. | -1
+effects: nerves -1
 
 
 scenario: Your dog sees a squirrel and goes stiff.
@@ -213,12 +266,16 @@ time: 4
 
 variant: The squirrel is on the other side of a busy road.
 choice: heel | The dog sits. The squirrel lives. The traffic lives. | 1
+effects: nerves +1
 choice: let_go | The dog bolts across the road. Cars stop. Everyone stares. The squirrel laughs. | -2
+effects: nerves -1, people -1
 timeout: The leash slips out of your hand. The dog is back in a minute. You aged a year. | -1
+effects: nerves -1
 
 variant: You are in a fenced dog park. Nobody else is around.
 choice: heel | The dog sits and gives you a look of deep disappointment. | 0
 choice: let_go | The dog sprints. The squirrel escapes up a tree. Best day of the dog's life. | 1
+effects: nerves +1
 timeout: The dog drags you halfway across the park. | 0
 
 # ---------------------------------------------------------------- Store
@@ -230,12 +287,16 @@ time: 6
 variant: It says: POTATOES - AISLE 4.
 choice: aisle4 | Aisle 4. Potatoes. The world makes sense. | 1
 choice: aisle7 | Aisle 7 is pet food. A dog on a bag judges you. | -1
+effects: nerves -1
 timeout: You stare at the stand. A kid takes the last potato. | -1
+effects: nerves -1
 
 variant: It says: POTATOES - AISLE 4. A handwritten note is taped over it: 'moved -> 7'.
 choice: aisle4 | Aisle 4 is wine now. You stand there with no potatoes and some ideas. | -1
+effects: nerves -1
 choice: aisle7 | Aisle 7. Potatoes. Bless whoever wrote that note. | 1
 timeout: You stare at the stand. A kid takes the last potato. | -1
+effects: nerves -1
 
 
 scenario: Deli special: SUSPICIOUS SAUSAGE, half price.
@@ -244,12 +305,14 @@ time: 5
 
 variant: The label says it was made today.
 choice: buy + yes | You buy two. They smell incredible. Dinner is sorted. | 1
+effects: money -1
 sets: good_sausage
 choice: no | You walk away. The man behind you buys all of it, very happily. | 0
 timeout: It sells out while you think. Rumors say it was good. | 0
 
 variant: The label says it was made last year.
 choice: buy + yes | You buy two. The cashier takes a step back. | -1
+effects: money -1
 sets: bad_sausage
 choice: no | The deli guy nods slowly. He respects you now. | 1
 timeout: It sells out while you think. You dodged something. | 0
@@ -261,13 +324,17 @@ time: 5
 
 variant: There is nothing in the bagging area.
 choice: lift_bag | You lift nothing. The machine is now angry about that too. | -1
+effects: nerves -1
 choice: call_staff | A staff member taps the screen once. 'It does that.' Fixed. | 1
 timeout: The machine keeps yelling. A queue forms behind you. | -1
+effects: nerves -1, people -1
 
 variant: Your own bag is in the bagging area.
 choice: lift_bag | You lift your bag. The machine calms down. You won. | 1
 choice: call_staff | Staff comes over, lifts your bag, looks at you, leaves. | -1
+effects: people -1
 timeout: The machine keeps yelling. A queue forms behind you. | -1
+effects: nerves -1, people -1
 
 
 scenario: The cashier asks: 'Do you need a bag?'
@@ -277,10 +344,13 @@ time: 4
 variant: You brought your own bag.
 choice: no | Bag declined. Eco-points +1. | 1
 choice: yes | Another bag for the bag of bags at home. | 0
+effects: money -1
 timeout: You say nothing. The cashier hands you a bag. It costs 7 coins. | 0
+effects: money -1
 
 variant: You forgot your bag. You are buying 14 apples.
 choice: no | You carry 14 apples in your arms. You drop three. | -1
+effects: nerves -1
 choice: yes | One bag. The apples are safe. | 1
 timeout: You say nothing. The cashier sighs and hands you a bag. | 0
 
@@ -292,13 +362,17 @@ time: 4
 
 variant: It is her third call in a row.
 choice: answer | 'Finally! Did you eat?' You did not. You talk for an hour. It is nice. | 1
+effects: people +1
 choice: decline | Mom calls your neighbor instead. The neighbor knocks. | -2
+effects: people -2
 sets: mom_ignored
 timeout: It rings out. She calls again. And again. And again. | -1
+effects: people -1
 sets: mom_ignored
 
 variant: You are in the shower with shampoo in your eyes.
 choice: answer | You grab the phone with wet hands. It falls in the bath. Mom hears everything. | -1
+effects: money -2
 choice: decline | Declined. You call back in ten minutes. 'Did you eat?' | 1
 timeout: It rings out. You call back later. All good. | 0
 
@@ -309,13 +383,19 @@ time: 4
 
 variant: Last time you said 'anything', you ended up at a raw vegan karaoke bar.
 choice: pizza | Pizza. Simple. Perfect. Nobody sings. | 1
+effects: people +1
 choice: anything | Raw vegan karaoke. Again. You sing a song about kale. | -1
+effects: money -1
 timeout: You don't reply. He eats alone and posts about it. | -1
+effects: people -1
 
 variant: He adds: 'I found a great new place!!'
 choice: pizza | 'Oh. Okay. Pizza.' He sounds a bit sad. The new place had live jazz. | -1
+effects: people -1
 choice: anything | The new place is great. He is very proud. You are very full. | 1
+effects: people +1
 timeout: You don't reply. He goes to the new place alone and posts about it. | -1
+effects: people -1
 
 # ================================================================ Consequences
 # These scenes are added to their part of the day only when an earlier outcome
@@ -327,7 +407,9 @@ needs: late_for_work
 time: 5
 choice: apologize | 'It happens. Once.' He walks away. You live to work another day. | 1
 choice: excuse | 'Traffic? You take the metro.' He walks away, taking notes in his head. | -1
+effects: people -1
 timeout: You freeze in the doorway. He looks at the clock, then at you, then at the clock. | -1
+effects: nerves -1
 
 
 scenario: You come home. The whole flat still smells of burnt milk.
@@ -335,8 +417,11 @@ phase: Evening
 needs: milk_burned
 time: 5
 choice: air_out | Fresh air. The smell leaves. So does the warmth, but still. | 1
+effects: nerves +1
 choice: mask_smell | Now it smells of burnt milk AND vanilla. A bold new scent. | -1
+effects: nerves -1
 timeout: You get used to it. That is the worst part. | -1
+effects: nerves -1
 
 
 scenario: You come home with heavy bags. Your neighbor from the lift is at the entrance.
@@ -347,14 +432,19 @@ time: 5
 variant: He grins and holds the door wide open for you.
 if: neighbor_helped
 choice: thank | 'Anytime, lift buddy.' Good neighbors are rare. | 1
+effects: people +1
 choice: ignore | You walk past in silence. His grin slowly fades. | -1
+effects: people -1
 timeout: You fumble with the bags. He waits. Eventually you all get in. | 0
 
 variant: He sees you. He remembers the lift. His hand is on the door.
 if: neighbor_snubbed
 choice: apologize | 'Sorry about this morning.' He snorts, then holds the door. Even. | 1
+effects: people +1
 choice: hold | 'Oh, NOW you want doors held.' The door closes. Slowly. With feeling. | -1 | ask him to hold it
+effects: people -1
 timeout: The door closes in your face. The lift has been avenged. | -1
+effects: people -1
 
 
 scenario: A flyer under your door: TUBA NIGHT, 8 PM. Someone wrote on it: 'for my lift buddy!'
@@ -362,6 +452,7 @@ phase: Evening
 needs: tuba_buddy
 time: 5
 choice: yes | It is loud. It is wonderful. You now know four tuba jokes. | 1 | go to the concert
+effects: people +1, nerves +1
 choice: no | You stay home. Through the wall, a tuba plays something sad. For you. | 0 | stay home
 timeout: You stand there holding the flyer until 8 PM passes. | 0
 
@@ -374,12 +465,15 @@ time: 5
 variant: It smells amazing. Garlic, smoke, a hint of joy.
 if: good_sausage
 choice: eat_it | Best dinner of the month. You eat it standing at the fridge, like a legend. | 1
+effects: nerves +1
 choice: throw_away | You throw away a perfectly good sausage. Somewhere, the deli guy feels it. | -1
+effects: money -1
 timeout: You close the fridge and go to bed hungry. The sausage waits for tomorrow. | 0
 
 variant: It smells like last year. It is slightly green.
 if: bad_sausage
 choice: eat_it | It tastes like last year too. You spend the night getting to know your bathroom. | -2
+effects: nerves -2
 choice: throw_away | Into the bin it goes. The bin seems unhappy too. | 1
 timeout: You close the fridge and go to bed hungry. Safe, at least. | 0
 
@@ -389,8 +483,11 @@ phase: Evening
 needs: dog_poisoned
 time: 5
 choice: pay | You pay. The dog licks your face. Worth every coin. | 1
+effects: money -2
 choice: haggle | 'This is a clinic, not a market.' The bill grows a 'late fee'. | -1
+effects: money -1, people -1
 timeout: You stay silent. The vet sighs and sends the bill by email. Twice. | -1
+effects: money -2, nerves -1
 
 
 scenario: The smiling people with pamphlets are back at your door.
@@ -399,8 +496,10 @@ needs: pamphlets_opened
 time: 4
 variant: This time they brought friends. And a guitar.
 choice: open | Forty minutes become two hours. You now know three songs about the end of the world. | -1
+effects: nerves -1
 choice: ignore | You stay very still. They sing one song to the door and leave. | 1
 timeout: They play the guitar until you open. You open. | -1
+effects: nerves -1
 
 
 scenario: 11 PM. Someone knocks on your door.
@@ -409,5 +508,20 @@ needs: mom_ignored
 time: 5
 variant: It is Mom. She brought soup. And questions.
 choice: let_in | Soup, questions, a hug. You did not eat today. She knew. | 1
+effects: people +2, nerves +1
 choice: pretend_asleep | She leaves the soup at the door with a note: 'I KNOW YOU ARE AWAKE.' | -1
+effects: people -1
 timeout: She has a spare key. Of course she has a spare key. | 0
+
+# ================================================================ Secret
+# Unlocked by the game: the word of the day was used on 5 different days.
+
+scenario: A letter with no stamp lies on your doormat.
+phase: Morning
+needs: wordsmith
+time: 6
+variant: 'Dear word lover. The Society of Unusual Words would like you to join. Reply in person.'
+choice: yes | You go. Tea, biscuits, and a man who says 'sesquipedalian' every four minutes. You fit right in. | 1 | accept the invitation
+effects: people +1, nerves +1
+choice: no | You put the letter in a drawer. At night it whispers long words. | 0 | politely decline
+timeout: The letter folds itself into a paper hedgehog and walks away. | 0

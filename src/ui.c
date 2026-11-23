@@ -45,7 +45,22 @@ int print_wrapped(int row, int col, const char *text) {
     return r - row + 1;
 }
 
+/* Row 0 of every in-game screen: meters and the word of the day, set by the game. */
+static char status[256];
+
+void ui_set_status(const char *s) {
+    snprintf(status, sizeof status, "%s", s);
+}
+
+void ui_draw_status(void) {
+    if (!*status || COLS < 8) return;
+    attron(COLOR_PAIR(C_DIM));
+    mvaddnstr(0, 4, status, COLS - 6);
+    attroff(COLOR_PAIR(C_DIM));
+}
+
 void draw_header(int idx, int total, const char *phase) {
+    ui_draw_status();
     mvprintw(1, 4, "[%d/%d]", idx + 1, total);
     if (phase) {
         printw("  ");
@@ -125,7 +140,7 @@ void wait_key(void) {
     timeout(16);
 }
 
-static void wait_enter(void) {
+void wait_enter(void) {
     int ch;
     timeout(-1);
     flushinp();

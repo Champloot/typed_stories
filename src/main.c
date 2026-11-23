@@ -3,14 +3,15 @@
 // A lexicon maps phrases to intents ("of course" means yes). Every outcome carries a mark that
 // adds up to the run's rating; fancier and fresher phrasing earns style points on top.
 //
-// Modules: util (helpers), lexicon (intents), pack (loading files, flags), match (reading
-// answers), style (style points), day (building a day), ui (drawing), game (playing a run).
-#include <time.h>
-
+// Modules: util (helpers), lexicon (intents), pack (loading files, flags, meters), match (reading
+// answers), style (style points), day (building a day), rng (seeded randomness), daily (date,
+// word of the day), records (best results), ui (drawing), game (playing a run).
 #include "common.h"
+#include "daily.h"
 #include "game.h"
 #include "lexicon.h"
 #include "pack.h"
+#include "records.h"
 #include "style.h"
 #include "ui.h"
 
@@ -24,9 +25,10 @@ int main(int argc, char **argv) {
     const char *dir = argc == 2 ? argv[1] : "packs";
     load_lexicon(dir);
     load_packs(dir);
+    load_words(dir);
     style_load();
+    records_load();
 
-    srand((unsigned)time(NULL));
     ui_init();
     int p;
     while ((p = choose_pack()) >= 0) run_pack(&packs[p]);
