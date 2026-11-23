@@ -1,4 +1,6 @@
-// Typing game prototype: packs (text files) -> scenarios -> choices typed under a timer.
+// Typing game: packs (text files) -> scenarios with hidden variants -> choices typed under a timer.
+// Every outcome carries a mark; the marks of a run add up to its rating.
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <ncurses.h>
@@ -9,43 +11,65 @@
 #include <time.h>
 
 #define MAX_CHOICES   4
+#define MAX_VARIANTS  8
+#define MAX_PHASES    12
+#define MAX_VERDICTS  8
 #define MAX_PACKS     9     // the menu picks a pack with one digit key
 #define LINE_BUF      1024
-#define BASE_POINTS   100   // default points per scenario (speed can double them)
-#define ERROR_PENALTY 10    // points lost per wrong key
+#define MARK_LIMIT    10    // marks are integers in -10..10
+#define TIMEOUT_MARK  (-1)  // default mark for hesitating
 
 /* ---------- data ---------- */
 
 /* What happens when the timer runs out. */
 enum {
-    TO_TEXT,    // a fixed outcome, described by the timeout text ("you go straight")
+    TO_TEXT,    // a fixed outcome, described by the timeout text
     TO_RANDOM   // the timeout text, then a random choice happens anyway
 };
 
-/* Where a scenario sits in a run. */
+/* Where a scenario sits in a run (packs without phases only). */
 enum { SLOT_ANY, SLOT_FIRST, SLOT_LAST };
 
 typedef struct {
     char *word;     // what to type
     char *result;   // what happens
-    int   bonus;    // flat points on top of speed (can be negative)
+    int   mark;     // how good it is for the run: +1 good, 0 neutral, -1 bad, ...
 } Choice;
 
+/* One hidden version of a scenario. The player sees its detail (the cue)
+   and has to work out which choice is right this time. */
 typedef struct {
-    char   *title;          // the situation
-    double  time_limit;     // seconds
+    char   *detail;         // cue shown under the title, NULL if none
+    int     weight;         // relative chance to be picked
     int     on_timeout;     // TO_*
-    char   *timeout_text;   // what happens if you hesitate
-    int     base;           // points for this scenario
-    int     slot;           // SLOT_*
+    char   *timeout_text;
+    int     timeout_mark;
     int     nchoices;
     Choice  choices[MAX_CHOICES];
-    int     src_line;       // for error messages
+    int     src_line;
+} Variant;
+
+typedef struct {
+    char    *title;
+    double   time_limit;    // seconds
+    int      slot;          // SLOT_*
+    int      phase;         // index into Pack.phases, -1 if none
+    int      nvariants;
+    Variant  variants[MAX_VARIANTS];
+    int      src_line;
 } Scenario;
 
 typedef struct {
+    char *name;
+    int   pick;             // scenarios of this phase per run, 0 = all
+} Phase;
+
+typedef struct {
     char     *name;
-    char     *verdicts[4];  // worst -> best
+    char     *verdicts[MAX_VERDICTS];   // worst -> best
+    int       nverdicts;
+    Phase     phases[MAX_PHASES];
+    int       nphases;
     Scenario *scen;
     int       count, cap;
 } Pack;
@@ -68,7 +92,7 @@ static void shuffle(int *a, int n) {
 }
 
 static void *xrealloc(void *p, size_t n) {
-    void *q = realloc(p, n);
+    void *q = realloc(p, n ? n : 1);
     if (!q) { fputs("out of memory\n", stderr); exit(1); }
     return q;
 }
@@ -115,6 +139,13 @@ static int split_pipe(char *s, char **parts, int max) {
     return n + 1;
 }
 
+static int is_ascii_text(const char *s) {
+    for (; *s; s++)
+        if ((unsigned char)*s > 126 || ((unsigned char)*s < 32 && *s != '\t' && *s != '\n' && *s != '\r'))
+            return 0;
+    return 1;
+}
+
 static int word_ok(const char *w) {
     if (!*w) return 0;
     for (; *w; w++)
@@ -126,20 +157,59 @@ static int is_prefix(const char *a, const char *b) {
     return strncmp(a, b, strlen(a)) == 0;
 }
 
-// A choice that is a prefix of another one in the same scenario could never be
+static int all_digits(const char *s) {
+    if (!*s) return 0;
+    for (; *s; s++)
+        if (!isdigit((unsigned char)*s)) return 0;
+    return 1;
+}
+
+static int parse_int(const char *s, int lo, int hi, int *out) {
+    char *end;
+    errno = 0;
+    long v = strtol(s, &end, 10);
+    if (end == s || *end || errno || v < lo || v > hi) return 0;
+    *out = (int)v;
+    return 1;
+}
+
+static Variant *new_variant(const char *file, int line, Scenario *s) {
+    if (s->nvariants == MAX_VARIANTS)
+        die_at(file, line, "at most %d variants per scenario", MAX_VARIANTS);
+    Variant *v = &s->variants[s->nvariants++];
+    memset(v, 0, sizeof *v);
+    v->weight = 1;
+    v->on_timeout = TO_TEXT;
+    v->timeout_mark = TIMEOUT_MARK;
+    v->src_line = line;
+    return v;
+}
+
+// 'choice:' and friends before any 'variant:' line belong to an implicit
+// variant with no detail, so simple scenarios need no 'variant:' at all.
+static Variant *cur_variant(const char *file, int line, Scenario *s) {
+    if (s->nvariants == 0) return new_variant(file, line, s);
+    return &s->variants[s->nvariants - 1];
+}
+
+// A choice that is a prefix of another one in the same variant could never be
 // told apart while typing, so reject it.
-static void validate_scenario(const char *file, const Scenario *s) {
+static void check_scenario(const char *file, const Scenario *s) {
     if (s->time_limit <= 0) die_at(file, s->src_line, "scenario '%s': missing 'time'", s->title);
-    if (!s->timeout_text)   die_at(file, s->src_line, "scenario '%s': missing 'timeout'", s->title);
-    if (s->nchoices < 1)    die_at(file, s->src_line, "scenario '%s': needs at least one 'choice'", s->title);
-    for (int i = 0; i < s->nchoices; i++)
-        for (int j = i + 1; j < s->nchoices; j++) {
-            const char *a = s->choices[i].word, *b = s->choices[j].word;
-            if (is_prefix(a, b) || is_prefix(b, a))
-                die_at(file, s->src_line,
-                       "scenario '%s': \"%s\" and \"%s\" overlap (one is the start of the other)",
-                       s->title, a, b);
-        }
+    if (s->nvariants == 0)  die_at(file, s->src_line, "scenario '%s': needs at least one 'choice'", s->title);
+    for (int k = 0; k < s->nvariants; k++) {
+        const Variant *v = &s->variants[k];
+        if (!v->timeout_text) die_at(file, v->src_line, "scenario '%s': missing 'timeout'", s->title);
+        if (v->nchoices < 1)  die_at(file, v->src_line, "scenario '%s': needs at least one 'choice'", s->title);
+        for (int i = 0; i < v->nchoices; i++)
+            for (int j = i + 1; j < v->nchoices; j++) {
+                const char *a = v->choices[i].word, *b = v->choices[j].word;
+                if (is_prefix(a, b) || is_prefix(b, a))
+                    die_at(file, v->src_line,
+                           "scenario '%s': \"%s\" and \"%s\" overlap (one is the start of the other)",
+                           s->title, a, b);
+            }
+    }
 }
 
 static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
@@ -157,6 +227,8 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
 
         char *line = trim(buf);
         if (*line == '\0' || *line == '#') continue;
+        if (!is_ascii_text(line))
+            die_at(path, lineno, "only plain ASCII text is supported for now (no Cyrillic, no fancy quotes or dashes)");
         char *colon = strchr(line, ':');
         if (!colon) die_at(path, lineno, "expected 'key: value'");
         *colon = '\0';
@@ -167,15 +239,42 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
             if (!*val) die_at(path, lineno, "empty pack name");
             pk->name = xstrdup(val);
         } else if (!strcmp(key, "verdicts")) {
-            char *parts[5];
-            if (split_pipe(val, parts, 5) != 4)
-                die_at(path, lineno, "'verdicts' needs exactly 4 entries separated by '|'");
-            for (int i = 0; i < 4; i++) {
+            if (pk->nverdicts) die_at(path, lineno, "second 'verdicts' line");
+            char *parts[MAX_VERDICTS + 1];
+            int n = split_pipe(val, parts, MAX_VERDICTS);
+            if (n < 2 || n > MAX_VERDICTS)
+                die_at(path, lineno, "'verdicts' needs 2 to %d entries separated by '|', worst first", MAX_VERDICTS);
+            for (int i = 0; i < n; i++) {
                 if (!*parts[i]) die_at(path, lineno, "empty verdict");
                 pk->verdicts[i] = xstrdup(parts[i]);
             }
+            pk->nverdicts = n;
+        } else if (!strcmp(key, "phases")) {
+            if (pk->nphases) die_at(path, lineno, "second 'phases' line");
+            if (pk->count)   die_at(path, lineno, "'phases' must come before the first scenario");
+            char *parts[MAX_PHASES + 1];
+            int n = split_pipe(val, parts, MAX_PHASES);
+            if (n > MAX_PHASES) die_at(path, lineno, "at most %d phases", MAX_PHASES);
+            for (int i = 0; i < n; i++) {
+                char *name = parts[i];
+                int pick = 0;
+                char *sp = strrchr(name, ' ');
+                if (sp && all_digits(sp + 1)) {
+                    if (!parse_int(sp + 1, 1, 100, &pick))
+                        die_at(path, lineno, "phase count must be from 1 to 100");
+                    *sp = '\0';
+                    name = trim(name);
+                }
+                if (!*name) die_at(path, lineno, "empty phase name");
+                for (int j = 0; j < i; j++)
+                    if (!strcmp(pk->phases[j].name, name))
+                        die_at(path, lineno, "phase '%s' is listed twice", name);
+                pk->phases[i].name = xstrdup(name);
+                pk->phases[i].pick = pick;
+            }
+            pk->nphases = n;
         } else if (!strcmp(key, "scenario")) {
-            if (cur) validate_scenario(path, cur);
+            if (cur) check_scenario(path, cur);
             if (!*val) die_at(path, lineno, "empty scenario title");
             if (pk->count == pk->cap) {
                 pk->cap = pk->cap ? pk->cap * 2 : 8;
@@ -184,9 +283,8 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
             Scenario *s = &pk->scen[pk->count++];
             memset(s, 0, sizeof *s);
             s->title = xstrdup(val);
-            s->base = BASE_POINTS;
             s->slot = SLOT_ANY;
-            s->on_timeout = TO_TEXT;
+            s->phase = -1;
             s->src_line = lineno;
         } else if (!cur) {
             die_at(path, lineno, "'%s' before the first 'scenario:'", key);
@@ -196,55 +294,68 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
             if (end == val || *end || t <= 0 || t > 120)
                 die_at(path, lineno, "'time' must be a number of seconds, more than 0 and up to 120");
             cur->time_limit = t;
-        } else if (!strcmp(key, "timeout")) {
-            if (!*val) die_at(path, lineno, "empty timeout text");
-            cur->timeout_text = xstrdup(val);
-        } else if (!strcmp(key, "on_timeout")) {
-            if (!strcmp(val, "text"))        cur->on_timeout = TO_TEXT;
-            else if (!strcmp(val, "random")) cur->on_timeout = TO_RANDOM;
-            else die_at(path, lineno, "'on_timeout' must be 'text' or 'random'");
-        } else if (!strcmp(key, "base")) {
-            char *end;
-            long b = strtol(val, &end, 10);
-            if (end == val || *end || b <= 0 || b > 1000)
-                die_at(path, lineno, "'base' must be an integer from 1 to 1000");
-            cur->base = (int)b;
         } else if (!strcmp(key, "slot")) {
             if (!strcmp(val, "first"))      cur->slot = SLOT_FIRST;
             else if (!strcmp(val, "last"))  cur->slot = SLOT_LAST;
             else if (!strcmp(val, "any"))   cur->slot = SLOT_ANY;
             else die_at(path, lineno, "'slot' must be 'first', 'last' or 'any'");
+        } else if (!strcmp(key, "phase")) {
+            if (!pk->nphases) die_at(path, lineno, "'phase' used, but the pack has no 'phases:' line");
+            int found = -1;
+            for (int i = 0; i < pk->nphases; i++)
+                if (!strcmp(pk->phases[i].name, val)) found = i;
+            if (found < 0) die_at(path, lineno, "phase '%s' is not listed in 'phases:'", val);
+            cur->phase = found;
+        } else if (!strcmp(key, "variant")) {
+            Variant *v = new_variant(path, lineno, cur);
+            v->detail = *val ? xstrdup(val) : NULL;
+        } else if (!strcmp(key, "weight")) {
+            Variant *v = cur_variant(path, lineno, cur);
+            if (!parse_int(val, 1, 100, &v->weight))
+                die_at(path, lineno, "'weight' must be an integer from 1 to 100");
+        } else if (!strcmp(key, "on_timeout")) {
+            Variant *v = cur_variant(path, lineno, cur);
+            if (!strcmp(val, "text"))        v->on_timeout = TO_TEXT;
+            else if (!strcmp(val, "random")) v->on_timeout = TO_RANDOM;
+            else die_at(path, lineno, "'on_timeout' must be 'text' or 'random'");
+        } else if (!strcmp(key, "timeout")) {
+            Variant *v = cur_variant(path, lineno, cur);
+            if (v->timeout_text) die_at(path, lineno, "second 'timeout' in the same variant");
+            char *parts[3];
+            int n = split_pipe(val, parts, 2);
+            if (n > 2) die_at(path, lineno, "'timeout' is: what happens | mark (mark is optional)");
+            if (!*parts[0]) die_at(path, lineno, "empty timeout text");
+            if (n == 2 && !parse_int(parts[1], -MARK_LIMIT, MARK_LIMIT, &v->timeout_mark))
+                die_at(path, lineno, "mark must be an integer from %d to %d", -MARK_LIMIT, MARK_LIMIT);
+            v->timeout_text = xstrdup(parts[0]);
         } else if (!strcmp(key, "choice")) {
-            if (cur->nchoices == MAX_CHOICES)
-                die_at(path, lineno, "at most %d choices per scenario", MAX_CHOICES);
+            Variant *v = cur_variant(path, lineno, cur);
+            if (v->nchoices == MAX_CHOICES)
+                die_at(path, lineno, "at most %d choices per variant", MAX_CHOICES);
             char *parts[4];
-            int n = split_pipe(val, parts, 4);
+            int n = split_pipe(val, parts, 3);
             if (n < 2 || n > 3)
-                die_at(path, lineno, "'choice' is: word | what happens | bonus (bonus is optional)");
+                die_at(path, lineno, "'choice' is: word | what happens | mark (mark is optional)");
             if (!word_ok(parts[0]))
                 die_at(path, lineno, "choice word must be non-empty printable ASCII");
             if (!*parts[1]) die_at(path, lineno, "empty choice result");
-            int bonus = 0;
-            if (n == 3) {
-                char *end;
-                long b = strtol(parts[2], &end, 10);
-                if (end == parts[2] || *end) die_at(path, lineno, "bonus must be an integer");
-                bonus = (int)b;
-            }
-            Choice *c = &cur->choices[cur->nchoices++];
+            int mark = 0;
+            if (n == 3 && !parse_int(parts[2], -MARK_LIMIT, MARK_LIMIT, &mark))
+                die_at(path, lineno, "mark must be an integer from %d to %d", -MARK_LIMIT, MARK_LIMIT);
+            Choice *c = &v->choices[v->nchoices++];
             c->word = xstrdup(parts[0]);
             c->result = xstrdup(parts[1]);
-            c->bonus = bonus;
+            c->mark = mark;
         } else {
             die_at(path, lineno, "unknown key '%s'", key);
         }
     }
     fclose(f);
 
-    if (!pk->name)         die_at(path, lineno, "missing 'pack:' name");
-    if (!pk->verdicts[0])  die_at(path, lineno, "missing 'verdicts:' line");
-    if (pk->count == 0)    die_at(path, lineno, "no scenarios");
-    validate_scenario(path, &pk->scen[pk->count - 1]);
+    if (!pk->name)      die_at(path, lineno, "missing 'pack:' name");
+    if (!pk->nverdicts) die_at(path, lineno, "missing 'verdicts:' line");
+    if (pk->count == 0) die_at(path, lineno, "no scenarios");
+    check_scenario(path, &pk->scen[pk->count - 1]);
 
     int firsts = 0, lasts = 0;
     for (int i = 0; i < pk->count; i++) {
@@ -253,6 +364,21 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
     }
     if (firsts > 1 || lasts > 1)
         die_at(path, lineno, "at most one 'slot: first' and one 'slot: last' per pack");
+
+    if (pk->nphases) {
+        for (int i = 0; i < pk->count; i++) {
+            const Scenario *s = &pk->scen[i];
+            if (s->phase < 0)
+                die_at(path, s->src_line, "scenario '%s': missing 'phase' (the pack has 'phases:')", s->title);
+            if (s->slot != SLOT_ANY)
+                die_at(path, s->src_line, "scenario '%s': 'slot' can't be used together with 'phases'", s->title);
+        }
+        for (int ph = 0; ph < pk->nphases; ph++) {
+            int n = 0;
+            for (int i = 0; i < pk->count; i++) n += pk->scen[i].phase == ph;
+            if (n == 0) die_at(path, lineno, "phase '%s' has no scenarios", pk->phases[ph].name);
+        }
+    }
 }
 
 static int cmp_names(const void *a, const void *b) {
@@ -290,6 +416,87 @@ static void load_packs(const char *dir) {
     }
 }
 
+/* ---------- building a run ---------- */
+
+typedef struct {
+    const Scenario *s;
+    const Variant  *v;
+    const char     *phase;  // NULL if the pack has no phases
+} Event;
+
+static const Variant *pick_variant(const Scenario *s) {
+    int total = 0;
+    for (int i = 0; i < s->nvariants; i++) total += s->variants[i].weight;
+    int r = rand() % total;
+    for (int i = 0; i < s->nvariants; i++) {
+        if (r < s->variants[i].weight) return &s->variants[i];
+        r -= s->variants[i].weight;
+    }
+    return &s->variants[s->nvariants - 1];
+}
+
+// Packs without phases: pinned scenarios go to the ends, the rest is shuffled in between.
+static int order_by_slots(const Pack *p, int *order) {
+    int n = 0, first = -1, last = -1;
+    for (int i = 0; i < p->count; i++) {
+        if (p->scen[i].slot == SLOT_FIRST)     first = i;
+        else if (p->scen[i].slot == SLOT_LAST) last = i;
+        else order[n++] = i;
+    }
+    shuffle(order, n);
+    if (first >= 0) {
+        memmove(order + 1, order, n * sizeof *order);
+        order[0] = first;
+        n++;
+    }
+    if (last >= 0) order[n++] = last;
+    return n;
+}
+
+// Phases go in the listed order; inside a phase, 'pick' random scenarios.
+// Every scenario then gets one of its variants, by weight.
+static int build_run(const Pack *p, Event *ev) {
+    int *idx = xrealloc(NULL, p->count * sizeof *idx);
+    int n = 0;
+    if (p->nphases) {
+        for (int ph = 0; ph < p->nphases; ph++) {
+            int m = 0;
+            for (int i = 0; i < p->count; i++)
+                if (p->scen[i].phase == ph) idx[m++] = i;
+            shuffle(idx, m);
+            int take = p->phases[ph].pick && p->phases[ph].pick < m ? p->phases[ph].pick : m;
+            for (int k = 0; k < take; k++) {
+                ev[n].s = &p->scen[idx[k]];
+                ev[n].phase = p->phases[ph].name;
+                n++;
+            }
+        }
+    } else {
+        int m = order_by_slots(p, idx);
+        for (int k = 0; k < m; k++) {
+            ev[n].s = &p->scen[idx[k]];
+            ev[n].phase = NULL;
+            n++;
+        }
+    }
+    free(idx);
+    for (int i = 0; i < n; i++) ev[i].v = pick_variant(ev[i].s);
+    return n;
+}
+
+// The best and worst mark this variant can give, so the rating can be scaled.
+static void mark_range(const Variant *v, int *lo, int *hi) {
+    *lo = *hi = v->choices[0].mark;
+    for (int c = 1; c < v->nchoices; c++) {
+        if (v->choices[c].mark < *lo) *lo = v->choices[c].mark;
+        if (v->choices[c].mark > *hi) *hi = v->choices[c].mark;
+    }
+    if (v->on_timeout == TO_TEXT) {
+        if (v->timeout_mark < *lo) *lo = v->timeout_mark;
+        if (v->timeout_mark > *hi) *hi = v->timeout_mark;
+    }
+}
+
 enum { C_OK = 1, C_BAD, C_DIM, C_WARN };
 
 /* ---------- rendering ---------- */
@@ -315,15 +522,36 @@ static int print_wrapped(int row, int col, const char *text) {
     return r - row + 1;
 }
 
-static void draw_prompt(const Scenario *s, const int *alive, int pos, double left,
-                        int flash_err, int idx, int total) {
-    erase();
+static void draw_header(int idx, int total, const char *phase) {
     mvprintw(1, 4, "[%d/%d]", idx + 1, total);
-    int crow = 3 + print_wrapped(3, 4, s->title) + 2;   // first row of choices
+    if (phase) {
+        printw("  ");
+        attron(A_BOLD);
+        for (const char *p = phase; *p; p++) addch(toupper((unsigned char)*p));
+        attroff(A_BOLD);
+    }
+}
+
+// Title plus the variant's detail (the cue). Returns the first row after them.
+static int draw_situation(const Scenario *s, const Variant *v, int bold) {
+    int r = 3;
+    if (bold) attron(A_BOLD);
+    r += print_wrapped(r, 4, s->title);
+    if (bold) attroff(A_BOLD);
+    if (v->detail) r += print_wrapped(r, 4, v->detail);
+    return r;
+}
+
+static void draw_prompt(const Event *e, const int *alive, int pos, double left,
+                        int flash_err, int idx, int total) {
+    const Variant *v = e->v;
+    erase();
+    draw_header(idx, total, e->phase);
+    int crow = draw_situation(e->s, v, 0) + 1;     // first row of choices
 
     // choices: typed part green, rest dim; choices you have moved away from fade
-    for (int c = 0; c < s->nchoices; c++) {
-        const char *w = s->choices[c].word;
+    for (int c = 0; c < v->nchoices; c++) {
+        const char *w = v->choices[c].word;
         int len = (int)strlen(w);
         mvaddstr(crow + c, 4, alive[c] ? "> " : "  ");
         for (int i = 0; i < len; i++) {
@@ -339,13 +567,14 @@ static void draw_prompt(const Scenario *s, const int *alive, int pos, double lef
     }
 
     // time bar
-    int bar_row = crow + s->nchoices + 2;
+    int bar_row = crow + v->nchoices + 1;
     int bar_w = COLS - 14;              // "[" + bar + "] 120.0s" must fit on one row
     if (bar_w > 30) bar_w = 30;
     if (bar_w < 5) bar_w = 5;
-    int filled = (int)(bar_w * (left / s->time_limit));
+    double limit = e->s->time_limit;
+    int filled = (int)(bar_w * (left / limit));
     if (filled < 0) filled = 0;
-    int pair = left < s->time_limit * 0.3 ? C_BAD : (left < s->time_limit * 0.6 ? C_WARN : C_OK);
+    int pair = left < limit * 0.3 ? C_BAD : (left < limit * 0.6 ? C_WARN : C_OK);
     attron(COLOR_PAIR(pair));
     mvprintw(bar_row, 4, "[");
     for (int i = 0; i < bar_w; i++) addch(i < filled ? '#' : ' ');
@@ -374,16 +603,14 @@ static void wait_enter(void) {
     timeout(16);
 }
 
-// Situation screen: the player reads the text; the choices stay hidden
-// and the timer does not run until Enter is pressed.
-static void show_intro(const Scenario *s, int idx, int total) {
+// Situation screen: the player reads the text and the cue; the choices stay
+// hidden and the timer does not run until Enter is pressed.
+static void show_intro(const Event *e, int idx, int total) {
     erase();
-    mvprintw(1, 4, "[%d/%d]", idx + 1, total);
-    attron(A_BOLD);
-    int r = 4 + print_wrapped(4, 4, s->title);
-    attroff(A_BOLD);
+    draw_header(idx, total, e->phase);
+    int r = draw_situation(e->s, e->v, 1);
     attron(COLOR_PAIR(C_DIM));
-    print_wrapped(r + 2, 4, "Press Enter when ready. The timer starts right after.");
+    print_wrapped(r + 1, 4, "Press Enter when ready. The timer starts right after.");
     attroff(COLOR_PAIR(C_DIM));
     refresh();
     wait_enter();
@@ -391,37 +618,48 @@ static void show_intro(const Scenario *s, int idx, int total) {
 
 /* ---------- gameplay ---------- */
 
-// returns points for this scenario; fills errors and result flag
-static int play_scenario(const Scenario *s, int idx, int total, int *errors_out, int *ok_out) {
-    int alive[MAX_CHOICES], pos = 0, errors = 0, flash_frames = 0;
-    for (int c = 0; c < s->nchoices; c++) alive[c] = 1;
+typedef struct {
+    int    marks, best, worst;  // sum of marks, and the best/worst possible for this run
+    int    keys_ok, keys_bad;
+    double typing_time;
+    int    timeouts;
+} Stats;
 
-    show_intro(s, idx, total);
+// Plays one event and returns its mark. The mark is never shown: the player
+// has to read it from the reaction.
+static int play_event(const Event *e, int idx, int total, Stats *st) {
+    const Scenario *s = e->s;
+    const Variant  *v = e->v;
+    int alive[MAX_CHOICES], pos = 0, typos = 0, flash_frames = 0;
+    for (int c = 0; c < v->nchoices; c++) alive[c] = 1;
+
+    show_intro(e, idx, total);
     double start = now();
 
     while (1) {
         double left = s->time_limit - (now() - start);
         if (left <= 0) {
-            // hesitated: no points, and the scenario decides what happens
-            *ok_out = 0; *errors_out += errors;
+            st->typing_time += s->time_limit;
+            st->timeouts++;
             const Choice *fate = NULL;
-            if (s->on_timeout == TO_RANDOM) fate = &s->choices[rand() % s->nchoices];
+            if (v->on_timeout == TO_RANDOM) fate = &v->choices[rand() % v->nchoices];
 
             erase();
-            int r = 3 + print_wrapped(3, 4, s->title) + 2;
+            draw_header(idx, total, e->phase);
+            int r = draw_situation(s, v, 0) + 1;
             attron(COLOR_PAIR(C_BAD));
             mvprintw(r, 4, "TIME'S UP");
             attroff(COLOR_PAIR(C_BAD));
             r += 2;
-            r += print_wrapped(r, 4, s->timeout_text);
+            r += print_wrapped(r, 4, v->timeout_text);
             if (fate) r += print_wrapped(r, 4, fate->result);
-            mvprintw(r + 2, 4, "(press any key)");
+            mvprintw(r + 1, 4, "(press any key)");
             refresh();
             wait_key();
-            return 0;
+            return fate ? fate->mark : v->timeout_mark;
         }
 
-        draw_prompt(s, alive, pos, left, flash_frames > 0, idx, total);
+        draw_prompt(e, alive, pos, left, flash_frames > 0, idx, total);
         if (flash_frames > 0) flash_frames--;
 
         int ch = getch();
@@ -429,48 +667,74 @@ static int play_scenario(const Scenario *s, int idx, int total, int *errors_out,
 
         // does any still-possible choice continue with this key?
         int match = 0;
-        for (int c = 0; c < s->nchoices; c++)
-            if (alive[c] && s->choices[c].word[pos] == ch) match = 1;
+        for (int c = 0; c < v->nchoices; c++)
+            if (alive[c] && v->choices[c].word[pos] == ch) match = 1;
         if (!match) {
-            errors++;
+            typos++;
+            st->keys_bad++;
             flash_frames = 6;   // brief red mark on the expected letter
             continue;
         }
+        st->keys_ok++;
 
-        for (int c = 0; c < s->nchoices; c++)
-            if (alive[c] && s->choices[c].word[pos] != ch) alive[c] = 0;
+        for (int c = 0; c < v->nchoices; c++)
+            if (alive[c] && v->choices[c].word[pos] != ch) alive[c] = 0;
         pos++;
 
         int chosen = -1;
-        for (int c = 0; c < s->nchoices; c++)
-            if (alive[c] && s->choices[c].word[pos] == '\0') chosen = c;
+        for (int c = 0; c < v->nchoices; c++)
+            if (alive[c] && v->choices[c].word[pos] == '\0') chosen = c;
         if (chosen < 0) continue;
 
-        // points do not depend on word length: the time limit already scales with it
-        const Choice *c = &s->choices[chosen];
+        const Choice *c = &v->choices[chosen];
         double elapsed = now() - start;
-        double ratio = 1.0 - elapsed / s->time_limit;       // 0..1
-        if (ratio < 0) ratio = 0;
-        int speed = (int)(s->base * ratio);
-        int pts   = s->base + speed + c->bonus - errors * ERROR_PENALTY;
-        if (pts < 0) pts = 0;
-        *ok_out = 1; *errors_out += errors;
+        st->typing_time += elapsed;
 
         erase();
-        int r = 3 + print_wrapped(3, 4, s->title) + 2;
+        draw_header(idx, total, e->phase);
+        int r = draw_situation(s, v, 0) + 1;
         attron(COLOR_PAIR(C_OK));
         mvprintw(r, 4, "%s", c->word);
         attroff(COLOR_PAIR(C_OK));
         r += 2;
         r += print_wrapped(r, 4, c->result);
-        mvprintw(r + 1, 4, "+%d  (%.2fs, %d errors)", pts, elapsed, errors);
-        r += 2;
-        if (c->bonus) { mvprintw(r, 4, "choice effect: %+d", c->bonus); r++; }
-        mvprintw(r + 1, 4, "(press any key)");
+        attron(COLOR_PAIR(C_DIM));
+        mvprintw(r + 1, 4, "%.1fs, %d typos", elapsed, typos);
+        attroff(COLOR_PAIR(C_DIM));
+        mvprintw(r + 3, 4, "(press any key)");
         refresh();
         wait_key();
-        return pts;
+        return c->mark;
     }
+}
+
+// Rating scales the run's marks between the worst and the best possible run,
+// in integer math so the boundaries are exact.
+static void show_summary(const Pack *p, const Stats *st) {
+    int span = st->best - st->worst, got = st->marks - st->worst;
+    int rating = span > 0 ? (got * 20 + span) / (2 * span) : 10;
+    int vi = span > 0 ? got * p->nverdicts / span : p->nverdicts - 1;
+    if (vi >= p->nverdicts) vi = p->nverdicts - 1;
+    if (vi < 0) vi = 0;
+    int keys = st->keys_ok + st->keys_bad;
+    double acc = keys ? 100.0 * st->keys_ok / keys : 100.0;
+    double wpm = st->typing_time > 0 ? (st->keys_ok / 5.0) / (st->typing_time / 60.0) : 0;
+
+    erase();
+    char head[256];
+    snprintf(head, sizeof head, "RUN COMPLETE: %s", p->name);
+    int r = 2 + print_wrapped(2, 4, head);
+    attron(A_BOLD);
+    mvprintw(r + 1, 4, "Rating: %d/10", rating);
+    attroff(A_BOLD);
+    r += 3;
+    r += print_wrapped(r, 4, p->verdicts[vi]);
+    r += 1;
+    mvprintw(r, 4, "Typing:   %.0f%% accuracy, %.0f wpm", acc, wpm);
+    mvprintw(r + 1, 4, "Timeouts: %d", st->timeouts);
+    mvprintw(r + 3, 4, "(press any key)");
+    refresh();
+    wait_key();
 }
 
 static int choose_pack(void) {
@@ -488,51 +752,20 @@ static int choose_pack(void) {
     }
 }
 
-// Pinned scenarios go to the ends, everything else is shuffled in between.
-static void build_order(const Pack *p, int *order) {
-    int n = 0, first = -1, last = -1;
-    for (int i = 0; i < p->count; i++) {
-        if (p->scen[i].slot == SLOT_FIRST)     first = i;
-        else if (p->scen[i].slot == SLOT_LAST) last = i;
-        else order[n++] = i;
-    }
-    shuffle(order, n);
-    if (first >= 0) {
-        memmove(order + 1, order, n * sizeof *order);
-        order[0] = first;
-        n++;
-    }
-    if (last >= 0) order[n++] = last;
-}
-
 static void run_pack(const Pack *p) {
-    int *order = xrealloc(NULL, p->count * sizeof *order);
-    build_order(p, order);
+    Event *ev = xrealloc(NULL, p->count * sizeof *ev);
+    int n = build_run(p, ev);
 
-    int score = 0, errors = 0, wins = 0;
-    for (int i = 0; i < p->count; i++) {
-        int ok = 0;
-        score += play_scenario(&p->scen[order[i]], i, p->count, &errors, &ok);
-        wins += ok;
+    Stats st = {0};
+    for (int i = 0; i < n; i++) {
+        int lo, hi;
+        mark_range(ev[i].v, &lo, &hi);
+        st.best += hi;
+        st.worst += lo;
+        st.marks += play_event(&ev[i], i, n, &st);
     }
-    free(order);
-
-    int v = wins * 3 / p->count;       // 0..3
-    if (wins == p->count && errors == 0) v = 3;
-    erase();
-    char head[256];
-    snprintf(head, sizeof head, "RUN COMPLETE: %s", p->name);
-    int r = 2 + print_wrapped(2, 4, head);          // 3 for a one-line header
-    mvprintw(r + 1, 4, "Score:   %d", score);
-    mvprintw(r + 2, 4, "Success: %d/%d", wins, p->count);
-    mvprintw(r + 3, 4, "Errors:  %d", errors);
-    int vrow = r + 5;
-    attron(A_BOLD);
-    int vl = print_wrapped(vrow, 4, p->verdicts[v]);
-    attroff(A_BOLD);
-    mvprintw(vrow + vl + 2, 4, "(press any key)");
-    refresh();
-    wait_key();
+    free(ev);
+    show_summary(p, &st);
 }
 
 int main(int argc, char **argv) {

@@ -1,4 +1,5 @@
 # Format: see FORMAT.md
+# Not reworked yet: one variant per scenario, no phases. Marks: +1 good, 0 neutral, -1 bad.
 pack: Knight
 verdicts: Dragon-food. | Peasant with a sword. | Worthy knight. | Bard will sing about you.
 
@@ -7,13 +8,13 @@ slot: first
 time: 4
 timeout: The king takes silence as a yes. You are going to fetch potatoes.
 choice: yes | Quest accepted. It is to fetch potatoes.
-choice: no | King: 'Cool. Dungeon then.' | -20
+choice: no | King: 'Cool. Dungeon then.' | -1
 
 scenario: The tavern is full: order a drink
 time: 4
 timeout: You get water. In a wooden cup. Shameful.
 choice: ale | Ale arrives. It is mostly foam.
-choice: mead | Mead arrives. You feel fancy for exactly one sip. | 15
+choice: mead | Mead arrives. You feel fancy for exactly one sip. | 1
 
 scenario: Guard at the gate: password?
 time: 5
@@ -25,29 +26,28 @@ time: 5
 on_timeout: random
 timeout: You stare at the potion. The potion stares back. Fate decides.
 choice: no thank you | Potion declined. Your liver thanks you.
-choice: how much | Three gold. It tastes like regret. | -20
+choice: how much | Three gold. It tastes like regret. | -1
 
 scenario: A heretic jumps out of the bushes
 time: 5
 timeout: The heretic steals your horse.
 choice: smite thee | Smitten. The bush is on fire.
-choice: begone | Heretic bows politely and leaves. The bush is fine. Boring. | -20
+choice: begone | Heretic bows politely and leaves. The bush is fine. Boring. | -1
 
 scenario: A bridge troll blocks the way
 time: 9
-base: 150
 timeout: Troll charges a toll. Of 3 gold. And your dignity.
 choice: thou shalt not pass | Troll steps aside, impressed by your grammar.
 
 scenario: A fork in the road
 time: 4
 timeout: Your horse picks straight ahead. Into a swamp. Of course.
-choice: left | Left: a cozy inn. Free soup. | 15
+choice: left | Left: a cozy inn. Free soup. | 1
 choice: right | Right: a nice view. And a cliff. Mostly cliff.
 
 scenario: A dragon inhales deeply
 slot: last
 time: 3.5
 timeout: Your eyebrows are gone.
-choice: parry | Clang! The dragon is offended. | 15
-choice: run | You run. The dragon is faster. Eyebrows gone, dignity gone. | -30
+choice: parry | Clang! The dragon is offended. | 1
+choice: run | You run. The dragon is faster. Eyebrows gone, dignity gone. | -2
