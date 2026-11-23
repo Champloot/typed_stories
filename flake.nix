@@ -17,6 +17,8 @@
           gdb
           clang-tools # clangd для подсказок в Zed (нужен compile_commands.json, см. bear)
           bear        # bear -- make  → compile_commands.json
+          # make test: тесты проигрывают целые дни через эмулятор терминала pyte
+          (python3.withPackages (ps: [ ps.pyte ]))
         ];
 
         # Библиотеки: заголовки и .so находит обёртка gcc сама
