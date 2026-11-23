@@ -3,6 +3,7 @@
 # Every scenario has hidden variants. The detail line under the title is the
 # cue: read it before you type. Reactions hint whether you got it right.
 # Marks: +1 good, 0 does not matter, -1 bad, -2 really bad.
+# Choice words are intents from lexicon.lex: the player can answer in many ways.
 
 pack: An ordinary day
 verdicts: Worst day ever. Go to bed and try again. | A Monday, in spirit. | An okay day. Nobody got hurt. | A good day. You did good. | A perfect day. Suspiciously perfect.
@@ -16,12 +17,12 @@ time: 4
 
 variant: It is Saturday.
 choice: snooze | You sleep two more hours. Glorious. | 1
-choice: get up | You are up at seven on a Saturday. For no reason. The birds are confused. | 0
+choice: get_up | You are up at seven on a Saturday. For no reason. The birds are confused. | 0
 timeout: You let it ring. The neighbor knocks on the wall. Twice. | -1
 
 variant: It is Monday. You have a meeting at nine.
 choice: snooze | You wake up at 9:40. The meeting went great without you. | -1
-choice: get up | You are up. You are a functioning adult. | 1
+choice: get_up | You are up. You are a functioning adult. | 1
 timeout: You sleep through it. Your phone shows four missed calls from work. | -2
 
 
@@ -30,13 +31,13 @@ phase: Morning
 time: 3
 
 variant: The milk starts to rise. Fast.
-choice: off | Saved. The milk settles down, a little embarrassed. | 1
-choice: later | The milk climbs out of the pot and explores the stove. | -1
+choice: stove_off | Saved. The milk settles down, a little embarrassed. | 1
+choice: wait | The milk climbs out of the pot and explores the stove. | -1
 timeout: The milk boils over. The kitchen smells like burnt childhood. | -1
 
 variant: You just poured it. The pot is still cold.
-choice: off | You turn it off. Now you have cold milk and no breakfast. | -1
-choice: later | You check your phone while it warms up. Perfect timing. | 1
+choice: stove_off | You turn it off. Now you have cold milk and no breakfast. | -1
+choice: wait | You check your phone while it warms up. Perfect timing. | 1
 timeout: You stare at the cold milk. It warms up eventually. Breakfast is late. | 0
 
 
@@ -112,12 +113,12 @@ phase: Work
 time: 4
 
 variant: It is Friday, 17:55.
-choice: sure | It was not a minute. It was your weekend. | -1
+choice: yes | It was not a minute. It was your weekend. | -1
 choice: busy | 'No worries, Monday then.' You are free. | 1
 timeout: You stare at the message. He sees 'read'. Then he walks over. | -1
 
 variant: It is Tuesday morning. He never writes to you.
-choice: sure | He offers you the new project. The good one. | 1
+choice: yes | He offers you the new project. The good one. | 1
 choice: busy | 'Okay, I'll ask Kevin.' Kevin gets the good project. Kevin. | -1
 timeout: You stare at the message. 'Never mind, I'll ask Kevin.' | -1
 
@@ -127,13 +128,13 @@ phase: Work
 time: 6
 
 variant: The cake says: HAPPY BIRTHDAY OLGA.
-choice: happy birthday | You sing on time and on key. Olga cries a little. Good tears. | 1
-choice: cake | You go straight for the cake. Nobody judges. Everybody judges. | -1
+choice: sing | You sing on time and on key. Olga cries a little. Good tears. | 1
+choice: eat_cake | You go straight for the cake. Nobody judges. Everybody judges. | -1
 timeout: You mumble along, half a line behind. Everyone hears. | -1
 
 variant: The cake has your name on it.
-choice: happy birthday | You sing along. To yourself. Loudly. People will remember this. | -1
-choice: cake | You cut your own cake like a king. The office applauds. | 1
+choice: sing | You sing along. To yourself. Loudly. People will remember this. | -1
+choice: eat_cake | You cut your own cake like a king. The office applauds. | 1
 timeout: You stand there smiling while everyone sings at you. It lasts forever. | 0
 
 
@@ -158,18 +159,18 @@ phase: Walk
 time: 4
 
 variant: It is a sock.
-choice: drop it | The dog drops it. It was a sock. Not yours. | 1
-choice: bon appetit | The dog finishes the sock. You wish it good digestion. So will the vet. | -1
+choice: drop_it | The dog drops it. It was a sock. Not yours. | 1
+choice: allow_eat | The dog finishes the sock. You wish it good digestion. So will the vet. | -1
 timeout: You hesitate. The sock is gone. Forever. | -1
 
 variant: It is a stick.
-choice: drop it | The dog drops the stick and looks at you like you cancelled Christmas. | 0
-choice: bon appetit | The dog chews the stick happily. It is just a stick. | 0
+choice: drop_it | The dog drops the stick and looks at you like you cancelled Christmas. | 0
+choice: allow_eat | The dog chews the stick happily. It is just a stick. | 0
 timeout: The dog decides for you. It is still a stick. | 0
 
 variant: You can't see what it is. It smells of sausage. There are more pieces in the grass.
-choice: drop it | The dog drops it. You notice a strange blue powder on it. Good call. | 1
-choice: bon appetit | The dog eats it. You spend the night at the vet. | -2
+choice: drop_it | The dog drops it. You notice a strange blue powder on it. Good call. | 1
+choice: allow_eat | The dog eats it. You spend the night at the vet. | -2
 timeout: You hesitate. The dog swallows it. You spend the night at the vet. | -2
 
 
@@ -178,18 +179,18 @@ phase: Walk
 time: 5
 
 variant: Your dog wags its tail and leans toward him.
-choice: go ahead | Your dog melts. He says 'who's a good boy' eleven times. | 0
-choice: fuck off | He pulls his hand back. 'Sorry, sorry.' He looks a little hurt. | 0
+choice: allow_pet + yes | Your dog melts. He says 'who's a good boy' eleven times. | 0
+choice: rude + no | He pulls his hand back. 'Sorry, sorry.' He looks a little hurt. | 0
 timeout: You freeze. He pets the dog anyway. Everyone is fine. | 0
 
 variant: Your dog growls quietly. Its ears are flat.
-choice: go ahead | Your dog nips his finger. Now you know his lawyer's name. | -2
-choice: fuck off | 'Fair enough,' he says to the dog. 'Grumpy one, huh.' | 1
+choice: allow_pet + yes | Your dog nips his finger. Now you know his lawyer's name. | -2
+choice: rude + no | 'Fair enough,' he says to the dog. 'Grumpy one, huh.' | 1
 timeout: He pets it anyway. The dog nips him. You both say sorry a lot. | -1
 
 variant: He has a leash in his other hand. There is no dog on it.
-choice: go ahead | He grabs your dog's collar. You get it back after a short, loud chase. | -2
-choice: fuck off | He tsks and walks away fast. The empty leash swings. | 1
+choice: allow_pet + yes | He grabs your dog's collar. You get it back after a short, loud chase. | -2
+choice: rude + no | He tsks and walks away fast. The empty leash swings. | 1
 timeout: He reaches for the collar. You pull the leash away just in time. | -1
 
 
@@ -199,12 +200,12 @@ time: 4
 
 variant: The squirrel is on the other side of a busy road.
 choice: heel | The dog sits. The squirrel lives. The traffic lives. | 1
-choice: let go | The dog bolts across the road. Cars stop. Everyone stares. The squirrel laughs. | -2
+choice: let_go | The dog bolts across the road. Cars stop. Everyone stares. The squirrel laughs. | -2
 timeout: The leash slips out of your hand. The dog is back in a minute. You aged a year. | -1
 
 variant: You are in a fenced dog park. Nobody else is around.
 choice: heel | The dog sits and gives you a look of deep disappointment. | 0
-choice: let go | The dog sprints. The squirrel escapes up a tree. Best day of the dog's life. | 1
+choice: let_go | The dog sprints. The squirrel escapes up a tree. Best day of the dog's life. | 1
 timeout: The dog drags you halfway across the park. | 0
 
 # ---------------------------------------------------------------- Store
@@ -214,13 +215,13 @@ phase: Store
 time: 6
 
 variant: It says: POTATOES - AISLE 4.
-choice: aisle four | Aisle 4. Potatoes. The world makes sense. | 1
-choice: aisle seven | Aisle 7 is pet food. A dog on a bag judges you. | -1
+choice: aisle4 | Aisle 4. Potatoes. The world makes sense. | 1
+choice: aisle7 | Aisle 7 is pet food. A dog on a bag judges you. | -1
 timeout: You stare at the stand. A kid takes the last potato. | -1
 
 variant: It says: POTATOES - AISLE 4. A handwritten note is taped over it: 'moved -> 7'.
-choice: aisle four | Aisle 4 is wine now. You stand there with no potatoes and some ideas. | -1
-choice: aisle seven | Aisle 7. Potatoes. Bless whoever wrote that note. | 1
+choice: aisle4 | Aisle 4 is wine now. You stand there with no potatoes and some ideas. | -1
+choice: aisle7 | Aisle 7. Potatoes. Bless whoever wrote that note. | 1
 timeout: You stare at the stand. A kid takes the last potato. | -1
 
 
@@ -229,13 +230,13 @@ phase: Store
 time: 5
 
 variant: The label says it was made today.
-choice: two please | The best sausage of your life. You will think about it for weeks. | 1
-choice: no thanks | You walk away. The man behind you buys all of it, very happily. | 0
+choice: buy + yes | The best sausage of your life. You will think about it for weeks. | 1
+choice: no | You walk away. The man behind you buys all of it, very happily. | 0
 timeout: It sells out while you think. Rumors say it was good. | 0
 
 variant: The label says it was made last year.
-choice: two please | You buy two. The cashier takes a step back. | -1
-choice: no thanks | The deli guy nods slowly. He respects you now. | 1
+choice: buy + yes | You buy two. The cashier takes a step back. | -1
+choice: no | The deli guy nods slowly. He respects you now. | 1
 timeout: It sells out while you think. You dodged something. | 0
 
 
@@ -244,13 +245,13 @@ phase: Store
 time: 5
 
 variant: There is nothing in the bagging area.
-choice: lift bag | You lift nothing. The machine is now angry about that too. | -1
-choice: call staff | A staff member taps the screen once. 'It does that.' Fixed. | 1
+choice: lift_bag | You lift nothing. The machine is now angry about that too. | -1
+choice: call_staff | A staff member taps the screen once. 'It does that.' Fixed. | 1
 timeout: The machine keeps yelling. A queue forms behind you. | -1
 
 variant: Your own bag is in the bagging area.
-choice: lift bag | You lift your bag. The machine calms down. You won. | 1
-choice: call staff | Staff comes over, lifts your bag, looks at you, leaves. | -1
+choice: lift_bag | You lift your bag. The machine calms down. You won. | 1
+choice: call_staff | Staff comes over, lifts your bag, looks at you, leaves. | -1
 timeout: The machine keeps yelling. A queue forms behind you. | -1
 
 
