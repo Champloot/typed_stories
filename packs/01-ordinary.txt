@@ -1,0 +1,53 @@
+# Format: see FORMAT.md
+pack: Ordinary middle-aged man
+verdicts: Even the potato is disappointed. | Average Tuesday. | Solid shopper. | Legend of the supermarket.
+
+scenario: Mom is calling
+slot: first
+time: 4
+timeout: The phone rings out. Mom calls again. And again.
+choice: answer | Mom: 'Did you eat?' You did not.
+choice: decline | Declined. Mom texts: 'we need to talk'. | -20
+
+scenario: Stand in the store: find the aisle
+time: 6
+timeout: You stare at the stand. A kid takes the last potato.
+choice: potato | Potato acquired. Cart is proud of you.
+
+scenario: Dog is eating something in the grass
+time: 4
+timeout: You hesitate. Dog ate it. It was a sock. Vet bill incoming.
+choice: drop it | Dog drops it. It was a sock. Not yours.
+choice: bon appetit | Dog finishes the sock. You wish it good digestion. | -30
+
+scenario: A stranger wants to pet your dog
+time: 5
+on_timeout: random
+timeout: You freeze. Fate decides.
+choice: fuck off | Stranger retreats. Dog is confused, you are a hero. | 20
+choice: go ahead | Stranger pets dog. Dog now loves stranger more.
+
+scenario: Taxi driver: left or right?
+time: 4
+timeout: You hesitate. The driver goes straight, into the rush hour. The meter is running.
+choice: left | Left. Driver nods. He also has a mortgage.
+choice: right | Right. Driver says he was going to turn right anyway.
+
+scenario: The green light is blinking at the crosswalk
+time: 3
+timeout: The light turns red. A cyclist says things.
+choice: run | You sprint. A pigeon is impressed. | 15
+choice: wait | You wait. A grandma overtakes you.
+
+scenario: Special offer at the deli
+time: 8
+base: 150
+timeout: Sausage sold out. Rumors say it was good.
+choice: suspicious sausage | Sausage secured. Nobody asks questions.
+
+scenario: Cashier: do you need a bag?
+slot: last
+time: 4
+timeout: You say nothing. The cashier hands you a bag. It costs 7 coins.
+choice: no | Bag declined. Eco-points +1. | 15
+choice: yes | One bag, please. And a second one, just in case.
