@@ -35,7 +35,7 @@ typedef struct {
 /* One meaning with many ways to say it, from lexicon.lex. */
 typedef struct {
     char   *name;
-    char   *label;  // first phrase as written in the file, shown as a hint
+    char   *hint;   // what the answer means ("agree"), shown instead of exact words
     Phrase *ph;
     int     n, cap;
 } Intent;
@@ -50,7 +50,7 @@ enum {
 enum { SLOT_ANY, SLOT_FIRST, SLOT_LAST };
 
 typedef struct {
-    char   *label;  // hint text
+    char   *label;  // hint shown on screen: the intent's hint, or the choice's own
     char   *result; // what happens
     int     mark;   // how good it is for the run: +1 good, 0 neutral, -1 bad, ...
     Phrase *ph;     // every phrase that selects this choice
@@ -99,7 +99,6 @@ static Pack   *packs;
 static int     npacks;
 static Intent *lex;
 static int     nlex, lexcap;
-static int     show_hints = 1;
 
 /* ---------- utils ---------- */
 
@@ -259,6 +258,16 @@ static const Intent *find_intent(const char *name) {
     return NULL;
 }
 
+// Every intent needs phrases and a hint. Typing the hint itself also works:
+// it is the plainest possible answer, so it counts as tier 1.
+static void finish_intent(const char *path, int line, Intent *in) {
+    if (in->n == 0) die_at(path, line, "intent '%s' has no phrases", in->name);
+    if (!in->hint)  die_at(path, line, "intent '%s' has no 'hint'", in->name);
+    char norm[LINE_BUF];
+    normalize(in->hint, norm, sizeof norm);
+    phrase_push(&in->ph, &in->n, &in->cap, norm, 1);
+}
+
 // lexicon.lex lives next to the packs. Without it every choice is a literal phrase.
 static void load_lexicon(const char *dir) {
     char path[1024];
@@ -274,7 +283,7 @@ static void load_lexicon(const char *dir) {
     Intent *cur = NULL;
     while (next_kv(f, path, &lineno, buf, &key, &val)) {
         if (!strcmp(key, "intent")) {
-            if (cur && cur->n == 0) die_at(path, lineno, "intent '%s' has no phrases", cur->name);
+            if (cur) finish_intent(path, lineno, cur);
             if (!name_ok(val)) die_at(path, lineno, "intent name must use lowercase letters, digits and '_'");
             if (find_intent(val)) die_at(path, lineno, "intent '%s' is defined twice", val);
             if (nlex == lexcap) {
@@ -297,15 +306,21 @@ static void load_lexicon(const char *dir) {
                 for (int j = 0; j < cur->n; j++)
                     if (!strcmp(cur->ph[j].text, norm))
                         die_at(path, lineno, "phrase '%s' is listed twice in intent '%s'", parts[i], cur->name);
-                if (!cur->label) cur->label = xstrdup(parts[i]);
                 phrase_push(&cur->ph, &cur->n, &cur->cap, norm, tier);
             }
+        } else if (!strcmp(key, "hint")) {
+            if (!cur) die_at(path, lineno, "'hint' before the first 'intent:'");
+            if (cur->hint) die_at(path, lineno, "second 'hint' in intent '%s'", cur->name);
+            char norm[LINE_BUF];
+            normalize(val, norm, sizeof norm);
+            if (!*norm) die_at(path, lineno, "empty hint");
+            cur->hint = xstrdup(val);
         } else {
-            die_at(path, lineno, "unknown key '%s' (expected 'intent', '1', '2' or '3')", key);
+            die_at(path, lineno, "unknown key '%s' (expected 'intent', 'hint', '1', '2' or '3')", key);
         }
     }
     fclose(f);
-    if (cur && cur->n == 0) die_at(path, lineno, "intent '%s' has no phrases", cur->name);
+    if (cur) finish_intent(path, lineno, cur);
 }
 
 /* ---------- pack loading ---------- */
@@ -340,7 +355,7 @@ static void parse_choice_words(const char *file, int line, Choice *c, char *word
         const Intent *in = find_intent(toks[t]);
         if (in) {
             for (int i = 0; i < in->n; i++) phrase_push(&c->ph, &c->nph, &c->cap, in->ph[i].text, in->ph[i].tier);
-            if (!c->label) c->label = xstrdup(in->label);
+            if (!c->label) c->label = xstrdup(in->hint);
             continue;
         }
         if (strchr(toks[t], '_'))
@@ -482,16 +497,24 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
             Variant *v = cur_variant(path, lineno, cur);
             if (v->nchoices == MAX_CHOICES)
                 die_at(path, lineno, "at most %d choices per variant", MAX_CHOICES);
-            char *parts[4];
-            int n = split_on(val, '|', parts, 3);
-            if (n < 2 || n > 3)
-                die_at(path, lineno, "'choice' is: words | what happens | mark (mark is optional)");
+            char *parts[5];
+            int n = split_on(val, '|', parts, 4);
+            if (n < 2 || n > 4)
+                die_at(path, lineno, "'choice' is: words | what happens | mark | hint (mark and hint are optional)");
             if (!*parts[1]) die_at(path, lineno, "empty choice result");
             int mark = 0;
-            if (n == 3 && !parse_int(parts[2], -MARK_LIMIT, MARK_LIMIT, &mark))
+            if (n >= 3 && !parse_int(parts[2], -MARK_LIMIT, MARK_LIMIT, &mark))
                 die_at(path, lineno, "mark must be an integer from %d to %d", -MARK_LIMIT, MARK_LIMIT);
             Choice *c = &v->choices[v->nchoices++];
             memset(c, 0, sizeof *c);
+            if (n == 4) {
+                // the choice's own hint: shown instead of the intent's, and typing it works
+                char norm[LINE_BUF];
+                normalize(parts[3], norm, sizeof norm);
+                if (!*norm) die_at(path, lineno, "empty hint");
+                c->label = xstrdup(parts[3]);
+                phrase_push(&c->ph, &c->nph, &c->cap, norm, 1);
+            }
             parse_choice_words(path, lineno, c, parts[0]);
             c->result = xstrdup(parts[1]);
             c->mark = mark;
@@ -837,6 +860,7 @@ static int draw_situation(const Scenario *s, const Variant *v, int bold) {
     return r;
 }
 
+// The hints say what each answer means ("agree / refuse"); the words are up to the player.
 static void draw_prompt(const Event *e, const char *input, const char *msg, double left,
                         int idx, int total) {
     const Variant *v = e->v;
@@ -844,7 +868,7 @@ static void draw_prompt(const Event *e, const char *input, const char *msg, doub
     draw_header(idx, total, e->phase);
     int r = draw_situation(e->s, v, 0) + 1;
 
-    if (show_hints) {
+    {
         char hint[512];
         size_t n = 0;
         hint[0] = '\0';
@@ -1079,12 +1103,10 @@ static int choose_pack(void) {
         int r = 2 + print_wrapped(2, 4, "TYPING GAME - choose who you are today") + 1;
         for (int i = 0; i < npacks; i++)
             mvprintw(r + i, 4, "%d) %s", i + 1, packs[i].name);
-        mvprintw(r + npacks + 1, 4, "h) hints: %s", show_hints ? "on" : "off");
-        mvprintw(r + npacks + 2, 4, "q) quit");
+        mvprintw(r + npacks + 1, 4, "q) quit");
         refresh();
         int ch = getch();
         if (ch == 'q') { timeout(16); return -1; }
-        if (ch == 'h') { show_hints = !show_hints; continue; }
         if (ch >= '1' && ch < '1' + npacks) { timeout(16); return ch - '1'; }
     }
 }
