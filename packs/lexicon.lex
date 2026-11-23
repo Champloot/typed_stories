@@ -218,3 +218,71 @@ hint: let him choose
 1: anything | whatever | you choose | up to you
 2: surprise me | your call | dealer's choice | I trust you
 3: lead the way | I am in your hands | take me anywhere
+
+# ---------------------------------------------------------------- consequences
+
+intent: thank
+hint: thank him
+1: thanks | thank you | thx | ty
+2: thanks a lot | much appreciated | you're a star | cheers mate
+3: my hero | you are a gentleman and a scholar | eternally grateful | bless you
+
+intent: apologize
+hint: apologize
+1: sorry | my bad | oops
+2: I'm sorry | sorry about that | my apologies | won't happen again | I apologize
+3: I deeply apologize | forgive me | mea culpa | I was a monster
+
+intent: excuse
+hint: make an excuse
+1: traffic | bus | train | the bus
+2: the bus was late | traffic was crazy | my alarm broke | doctor
+3: my dog ate my alarm | time is a construct | I was here in spirit
+
+intent: air_out
+hint: air the flat
+1: open the window | window | air | open windows
+2: let some air in | fresh air | open everything | air it out
+3: let the wind take it | begone foul smell | operation fresh air
+
+intent: mask_smell
+hint: cover the smell
+1: candle | spray | perfume | air freshener
+2: light a candle | cover it | use spray
+3: fight smell with smell | vanilla will save us
+
+intent: eat_it
+hint: eat it
+1: eat | eat it | yum | dinner
+2: one bite | just a little | why not | bon appetit
+3: fortune favors the hungry | what could go wrong | a feast
+
+intent: throw_away
+hint: throw it away
+1: throw away | bin | trash | throw it out
+2: into the bin | not worth it | goodbye sausage | toss it
+3: rest in peace | to the bin with thee | it had a good run
+
+intent: pay
+hint: pay the bill
+1: pay | ok | fine | pay it
+2: here you go | card please | take my money
+3: worth every penny | anything for my dog | the dog is priceless
+
+intent: haggle
+hint: haggle
+1: discount | cheaper | too much | no
+2: can you do better | any discount | that's a lot | that is too much
+3: let us negotiate | I know a guy | what if I pay in compliments
+
+intent: let_in
+hint: let her in
+1: come in | open | ok | yes
+2: hi mom | come on in | of course
+3: mother dearest | soup time | welcome home mom
+
+intent: pretend_asleep
+hint: pretend to sleep
+1: sleep | shh | snore | zzz
+2: I'm asleep | nobody home | lights off
+3: I am but a dream | play dead | the house is empty

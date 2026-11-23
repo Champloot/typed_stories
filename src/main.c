@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <ncurses.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,8 +24,27 @@
 #define LINE_BUF      1024
 #define MARK_LIMIT    10    // marks are integers in -10..10
 #define TIMEOUT_MARK  (-1)  // default mark for hesitating
+#define MAX_FLAGS     64    // different flags per pack (one bit each)
+#define MAX_SETS      4     // flags one outcome can set
+#define MAX_CLAUSES   4     // conditions joined with ','
+#define MAX_LITS      4     // flags joined with 'or' in one condition
 
 /* ---------- data ---------- */
+
+/* Flags are what the day remembers: an outcome sets them ('sets:'), and later
+   variants ('if:') and whole scenes ('needs:') check them. */
+
+/* A condition: every clause (joined with ',') must hold; inside a clause one of
+   the flags (joined with ' or ') is enough. '!flag' means the flag is not set. */
+typedef struct {
+    int nclauses;
+    struct { int n; int flag[MAX_LITS]; int neg[MAX_LITS]; } c[MAX_CLAUSES];
+} Cond;
+
+typedef struct {
+    int n;
+    int flag[MAX_SETS];
+} FlagSet;
 
 /* A phrase the player may type. Text is normalized (see normalize()). */
 typedef struct {
@@ -55,6 +75,7 @@ typedef struct {
     int     mark;   // how good it is for the run: +1 good, 0 neutral, -1 bad, ...
     Phrase *ph;     // every phrase that selects this choice
     int     nph, cap;
+    FlagSet sets;   // what the day remembers if this happens
 } Choice;
 
 /* One hidden version of a scenario. The player sees its detail (the cue)
@@ -65,8 +86,12 @@ typedef struct {
     int     on_timeout;     // TO_*
     char   *timeout_text;
     int     timeout_mark;
+    FlagSet timeout_sets;
     int     nchoices;
     Choice  choices[MAX_CHOICES];
+    int     has_cond;       // 'if:' given: only possible when cond holds, and then preferred
+    Cond    cond;
+    int     last_outcome;   // while parsing: what 'sets:' refers to (-1 none, -2 timeout, else a choice)
     int     src_line;
 } Variant;
 
@@ -75,6 +100,8 @@ typedef struct {
     double   time_limit;    // seconds
     int      slot;          // SLOT_*
     int      phase;         // index into Pack.phases, -1 if none
+    int      has_needs;     // 'needs:' given: an unlocked scene, added to its phase when needs holds
+    Cond     needs;
     int      nvariants;
     Variant  variants[MAX_VARIANTS];
     int      src_line;
@@ -93,6 +120,10 @@ typedef struct {
     int       nphases;
     Scenario *scen;
     int       count, cap;
+    char     *flags[MAX_FLAGS];
+    int       nflags;
+    int       flag_is_set[MAX_FLAGS];   // some outcome sets it
+    int       flag_checked[MAX_FLAGS];  // line of the first 'if'/'needs' that checks it, 0 if none
 } Pack;
 
 static Pack   *packs;
@@ -333,8 +364,66 @@ static Variant *new_variant(const char *file, int line, Scenario *s) {
     v->weight = 1;
     v->on_timeout = TO_TEXT;
     v->timeout_mark = TIMEOUT_MARK;
+    v->last_outcome = -1;
     v->src_line = line;
     return v;
+}
+
+static int flag_index(const char *file, int line, Pack *pk, const char *name) {
+    if (!name_ok(name))
+        die_at(file, line, "flag name '%s' must use lowercase letters, digits and '_'", name);
+    for (int i = 0; i < pk->nflags; i++)
+        if (!strcmp(pk->flags[i], name)) return i;
+    if (pk->nflags == MAX_FLAGS) die_at(file, line, "at most %d different flags per pack", MAX_FLAGS);
+    pk->flags[pk->nflags] = xstrdup(name);
+    return pk->nflags++;
+}
+
+// "a, b or !c" -> a AND (b OR not c)
+static void parse_cond(const char *file, int line, Pack *pk, char *val, Cond *out) {
+    memset(out, 0, sizeof *out);
+    char *clauses[MAX_CLAUSES + 1];
+    int nc = split_on(val, ',', clauses, MAX_CLAUSES);
+    if (nc > MAX_CLAUSES) die_at(file, line, "at most %d conditions joined with ','", MAX_CLAUSES);
+    for (int i = 0; i < nc; i++) {
+        char *s = clauses[i];
+        if (!*s) die_at(file, line, "empty condition (check the ',' signs)");
+        int nl = 0;
+        while (1) {
+            char *o = strstr(s, " or ");
+            if (o) *o = '\0';
+            char *lit = trim(s);
+            if (nl == MAX_LITS) die_at(file, line, "at most %d flags joined with 'or'", MAX_LITS);
+            int neg = 0;
+            if (*lit == '!') { neg = 1; lit = trim(lit + 1); }
+            if (!*lit) die_at(file, line, "empty flag name in condition");
+            int fi = flag_index(file, line, pk, lit);
+            if (!pk->flag_checked[fi]) pk->flag_checked[fi] = line;
+            out->c[i].flag[nl] = fi;
+            out->c[i].neg[nl] = neg;
+            nl++;
+            if (!o) break;
+            s = o + 4;
+        }
+        out->c[i].n = nl;
+    }
+    out->nclauses = nc;
+}
+
+static int cond_holds(const Cond *c, uint64_t flags) {
+    for (int i = 0; i < c->nclauses; i++) {
+        int any = 0;
+        for (int j = 0; j < c->c[i].n; j++) {
+            int set = (int)((flags >> c->c[i].flag[j]) & 1u);
+            if (set != c->c[i].neg[j]) { any = 1; break; }
+        }
+        if (!any) return 0;
+    }
+    return 1;
+}
+
+static void apply_sets(uint64_t *flags, const FlagSet *fs) {
+    for (int i = 0; i < fs->n; i++) *flags |= (uint64_t)1 << fs->flag[i];
 }
 
 // 'choice:' and friends before any 'variant:' line belong to an implicit
@@ -474,6 +563,30 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
         } else if (!strcmp(key, "variant")) {
             Variant *v = new_variant(path, lineno, cur);
             v->detail = *val ? xstrdup(val) : NULL;
+        } else if (!strcmp(key, "needs")) {
+            if (cur->has_needs) die_at(path, lineno, "second 'needs' in one scenario");
+            parse_cond(path, lineno, pk, val, &cur->needs);
+            cur->has_needs = 1;
+        } else if (!strcmp(key, "if")) {
+            Variant *v = cur_variant(path, lineno, cur);
+            if (v->has_cond) die_at(path, lineno, "second 'if' in one variant");
+            parse_cond(path, lineno, pk, val, &v->cond);
+            v->has_cond = 1;
+        } else if (!strcmp(key, "sets")) {
+            Variant *v = cur->nvariants ? &cur->variants[cur->nvariants - 1] : NULL;
+            if (!v || v->last_outcome == -1)
+                die_at(path, lineno, "'sets' must come right after a 'choice' or 'timeout' line");
+            FlagSet *fs = v->last_outcome == -2 ? &v->timeout_sets : &v->choices[v->last_outcome].sets;
+            char *names[MAX_SETS + 1];
+            int n = split_on(val, ',', names, MAX_SETS);
+            if (n > MAX_SETS) die_at(path, lineno, "at most %d flags in one 'sets'", MAX_SETS);
+            for (int i = 0; i < n; i++) {
+                if (!*names[i]) die_at(path, lineno, "empty flag name (check the ',' signs)");
+                int fi = flag_index(path, lineno, pk, names[i]);
+                pk->flag_is_set[fi] = 1;
+                if (fs->n == MAX_SETS) die_at(path, lineno, "at most %d flags per outcome", MAX_SETS);
+                fs->flag[fs->n++] = fi;
+            }
         } else if (!strcmp(key, "weight")) {
             Variant *v = cur_variant(path, lineno, cur);
             if (!parse_int(val, 1, 100, &v->weight))
@@ -493,6 +606,7 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
             if (n == 2 && !parse_int(parts[1], -MARK_LIMIT, MARK_LIMIT, &v->timeout_mark))
                 die_at(path, lineno, "mark must be an integer from %d to %d", -MARK_LIMIT, MARK_LIMIT);
             v->timeout_text = xstrdup(parts[0]);
+            v->last_outcome = -2;
         } else if (!strcmp(key, "choice")) {
             Variant *v = cur_variant(path, lineno, cur);
             if (v->nchoices == MAX_CHOICES)
@@ -518,6 +632,7 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
             parse_choice_words(path, lineno, c, parts[0]);
             c->result = xstrdup(parts[1]);
             c->mark = mark;
+            v->last_outcome = v->nchoices - 1;
         } else {
             die_at(path, lineno, "unknown key '%s'", key);
         }
@@ -536,6 +651,11 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
     }
     if (firsts > 1 || lasts > 1)
         die_at(path, lineno, "at most one 'slot: first' and one 'slot: last' per pack");
+
+    // a flag that is checked but never set is almost always a typo
+    for (int i = 0; i < pk->nflags; i++)
+        if (pk->flag_checked[i] && !pk->flag_is_set[i])
+            die_at(path, pk->flag_checked[i], "flag '%s' is checked here, but no outcome sets it", pk->flags[i]);
 
     if (pk->nphases) {
         for (int i = 0; i < pk->count; i++) {
@@ -742,15 +862,32 @@ typedef struct {
     const char     *phase;  // NULL if the pack has no phases
 } Event;
 
-static const Variant *pick_variant(const Scenario *s) {
-    int total = 0;
-    for (int i = 0; i < s->nvariants; i++) total += s->variants[i].weight;
-    int r = rand() % total;
-    for (int i = 0; i < s->nvariants; i++) {
-        if (r < s->variants[i].weight) return &s->variants[i];
-        r -= s->variants[i].weight;
+// Variants whose 'if' holds win over plain ones, so a consequence shows up
+// whenever its flags are set. NULL if no variant fits right now.
+static const Variant *pick_variant(const Scenario *s, uint64_t flags) {
+    int want_cond = 0, total = 0;
+    for (int i = 0; i < s->nvariants; i++)
+        if (s->variants[i].has_cond && cond_holds(&s->variants[i].cond, flags)) want_cond = 1;
+    for (int pass = 0; pass < 2; pass++) {
+        int r = pass ? rand() % total : 0;
+        for (int i = 0; i < s->nvariants; i++) {
+            const Variant *v = &s->variants[i];
+            int ok = want_cond ? v->has_cond && cond_holds(&v->cond, flags) : !v->has_cond;
+            if (!ok) continue;
+            if (!pass) { total += v->weight; continue; }
+            if (r < v->weight) return v;
+            r -= v->weight;
+        }
+        if (!total) return NULL;
     }
-    return &s->variants[s->nvariants - 1];
+    return NULL;
+}
+
+static int scenario_open(const Scenario *s, uint64_t flags) {
+    if (s->has_needs && !cond_holds(&s->needs, flags)) return 0;
+    for (int i = 0; i < s->nvariants; i++)
+        if (!s->variants[i].has_cond || cond_holds(&s->variants[i].cond, flags)) return 1;
+    return 0;
 }
 
 // Packs without phases: pinned scenarios go to the ends, the rest is shuffled in between.
@@ -771,35 +908,43 @@ static int order_by_slots(const Pack *p, int *order) {
     return n;
 }
 
-// Phases go in the listed order; inside a phase, 'pick' random scenarios.
-// Every scenario then gets one of its variants, by weight.
-static int build_run(const Pack *p, Event *ev) {
-    int *idx = xrealloc(NULL, (size_t)p->count * sizeof *idx);
-    int n = 0;
-    if (p->nphases) {
-        for (int ph = 0; ph < p->nphases; ph++) {
-            int m = 0;
-            for (int i = 0; i < p->count; i++)
-                if (p->scen[i].phase == ph) idx[m++] = i;
-            shuffle(idx, m);
-            int take = p->phases[ph].pick && p->phases[ph].pick < m ? p->phases[ph].pick : m;
-            for (int k = 0; k < take; k++) {
-                ev[n].s = &p->scen[idx[k]];
-                ev[n].phase = p->phases[ph].name;
-                n++;
-            }
-        }
-    } else {
-        int m = order_by_slots(p, idx);
-        for (int k = 0; k < m; k++) {
-            ev[n].s = &p->scen[idx[k]];
-            ev[n].phase = NULL;
-            n++;
-        }
+// One phase, built when the day reaches it (so earlier choices count):
+// 'pick' random regular scenarios plus every unlocked scene ('needs:') that
+// is open now, shuffled together.
+static int build_phase(const Pack *p, int ph, uint64_t flags, int *out) {
+    int *pool = xrealloc(NULL, (size_t)p->count * sizeof *pool);
+    int m = 0, n = 0;
+    for (int i = 0; i < p->count; i++) {
+        const Scenario *s = &p->scen[i];
+        if (s->phase == ph && !s->has_needs && scenario_open(s, flags)) pool[m++] = i;
     }
-    free(idx);
-    for (int i = 0; i < n; i++) ev[i].v = pick_variant(ev[i].s);
+    shuffle(pool, m);
+    int pick = p->phases[ph].pick, take = pick && pick < m ? pick : m;
+    for (int k = 0; k < take; k++) out[n++] = pool[k];
+    for (int i = 0; i < p->count; i++) {
+        const Scenario *s = &p->scen[i];
+        if (s->phase == ph && s->has_needs && scenario_open(s, flags)) out[n++] = i;
+    }
+    free(pool);
+    shuffle(out, n);
     return n;
+}
+
+// For the [3/11] header: phases not built yet, as they would be with today's flags.
+// The number grows when a choice unlocks a new scene.
+static int planned_after(const Pack *p, int ph_from, uint64_t flags) {
+    int t = 0;
+    for (int ph = ph_from; ph < p->nphases; ph++) {
+        int m = 0, u = 0;
+        for (int i = 0; i < p->count; i++) {
+            const Scenario *s = &p->scen[i];
+            if (s->phase != ph || !scenario_open(s, flags)) continue;
+            if (s->has_needs) u++; else m++;
+        }
+        int pick = p->phases[ph].pick;
+        t += (pick && pick < m ? pick : m) + u;
+    }
+    return t;
 }
 
 // The best and worst mark this variant can give, so the rating can be scaled.
@@ -959,7 +1104,8 @@ static int is_backspace(int ch) {
 
 // Plays one event and returns its mark. The mark is never shown: the player
 // has to read it from the reaction. Style points are shown, they are about words.
-static int play_event(const Event *e, int idx, int total, Stats *st) {
+// The outcome's flags are added to *flags.
+static int play_event(const Event *e, int idx, int total, Stats *st, uint64_t *flags) {
     const Scenario *s = e->s;
     const Variant  *v = e->v;
     char input[INPUT_MAX + 1] = "", msg[200] = "";
@@ -988,6 +1134,8 @@ static int play_event(const Event *e, int idx, int total, Stats *st) {
             mvprintw(r + 1, 4, "(press any key)");
             refresh();
             wait_key();
+            apply_sets(flags, &v->timeout_sets);
+            if (fate) apply_sets(flags, &fate->sets);
             return fate ? fate->mark : v->timeout_mark;
         }
 
@@ -1062,6 +1210,7 @@ static int play_event(const Event *e, int idx, int total, Stats *st) {
         mvprintw(r + 1 + nl + 1, 4, "(press any key)");
         refresh();
         wait_key();
+        apply_sets(flags, &c->sets);
         return c->mark;
     }
 }
@@ -1111,22 +1260,37 @@ static int choose_pack(void) {
     }
 }
 
+// The day is built phase by phase, and each event picks its variant only when
+// it comes up, so flags set earlier change what happens later.
 static void run_pack(const Pack *p) {
-    Event *ev = xrealloc(NULL, (size_t)p->count * sizeof *ev);
-    int n = build_run(p, ev);
-
-    style_new_run();
+    int *order = xrealloc(NULL, (size_t)p->count * sizeof *order);
+    uint64_t flags = 0;
     Stats st = {0};
-    for (int i = 0; i < n; i++) {
-        int lo, hi;
-        mark_range(ev[i].v, &lo, &hi);
-        st.best += hi;
-        st.worst += lo;
-        st.marks += play_event(&ev[i], i, n, &st);
+    int played = 0;
+    style_new_run();
+
+    int nph = p->nphases ? p->nphases : 1;
+    for (int ph = 0; ph < nph; ph++) {
+        int n = p->nphases ? build_phase(p, ph, flags, order) : order_by_slots(p, order);
+        for (int k = 0; k < n; k++) {
+            Event e;
+            e.s = &p->scen[order[k]];
+            e.phase = p->nphases ? p->phases[ph].name : NULL;
+            if (e.s->has_needs && !cond_holds(&e.s->needs, flags)) continue;
+            e.v = pick_variant(e.s, flags);
+            if (!e.v) continue;     // every variant needs flags that are not set
+            int total = played + (n - k) + (p->nphases ? planned_after(p, ph + 1, flags) : 0);
+            int lo, hi;
+            mark_range(e.v, &lo, &hi);
+            st.best += hi;
+            st.worst += lo;
+            st.marks += play_event(&e, played, total, &st, &flags);
+            played++;
+        }
     }
-    free(ev);
+    free(order);
     style_save();
-    show_summary(p, &st, n);
+    show_summary(p, &st, played);
 }
 
 int main(int argc, char **argv) {

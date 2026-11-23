@@ -4,10 +4,12 @@
 # cue: read it before you type. Reactions hint whether you got it right.
 # Marks: +1 good, 0 does not matter, -1 bad, -2 really bad.
 # Choice words are intents from lexicon.lex: the player can answer in many ways.
+# 'sets:' after an outcome makes the day remember it; scenes with 'needs:' at the
+# end of the file appear only when that happened. Night has only such scenes.
 
 pack: An ordinary day
 verdicts: Worst day ever. Go to bed and try again. | A Monday, in spirit. | An okay day. Nobody got hurt. | A good day. You did good. | A perfect day. Suspiciously perfect.
-phases: Morning 2 | Commute 2 | Work 2 | Walk 2 | Store 2 | Evening 1
+phases: Morning 2 | Commute 2 | Work 2 | Walk 2 | Store 2 | Evening 1 | Night
 
 # ---------------------------------------------------------------- Morning
 
@@ -22,8 +24,10 @@ timeout: You let it ring. The neighbor knocks on the wall. Twice. | -1
 
 variant: It is Monday. You have a meeting at nine.
 choice: snooze | You wake up at 9:40. The meeting went great without you. | -1
+sets: late_for_work
 choice: get_up | You are up. You are a functioning adult. | 1
 timeout: You sleep through it. Your phone shows four missed calls from work. | -2
+sets: late_for_work
 
 
 scenario: You put milk on the stove for breakfast.
@@ -33,7 +37,9 @@ time: 3
 variant: The milk starts to rise. Fast.
 choice: stove_off | Saved. The milk settles down, a little embarrassed. | 1
 choice: wait | The milk climbs out of the pot and explores the stove. | -1
+sets: milk_burned
 timeout: The milk boils over. The kitchen smells like burnt childhood. | -1
+sets: milk_burned
 
 variant: You just poured it. The pot is still cold.
 choice: stove_off | You turn it off. Now you have cold milk and no breakfast. | -1
@@ -52,6 +58,7 @@ timeout: The courier leaves. Your parcel goes on a trip without you. | -1
 
 variant: Two very smiling people with a stack of pamphlets.
 choice: open | You learn a lot about the end of the world. It takes forty minutes. | -1
+sets: pamphlets_opened
 choice: ignore | They knock twice more, then move on. You hear the neighbor sigh. | 1
 timeout: You stand very still. They leave a pamphlet under the door. | 0
 
@@ -68,11 +75,15 @@ time: 3
 
 variant: Your neighbor is running toward the lift, waving.
 choice: hold | He squeezes in. 'Thanks!' He smells of good coffee. | 1
+sets: neighbor_helped
 choice: close | The doors close in his face. You will see him every day for the rest of your life. | -1
+sets: neighbor_snubbed
 timeout: The doors close by themselves. He saw you not pressing the button. | -1
+sets: neighbor_snubbed
 
 variant: Your neighbor is running toward the lift. He is carrying a tuba.
 choice: hold | He gets in. So does the tuba. You ride nine floors pressed against the wall. | -1
+sets: tuba_buddy
 choice: close | The doors close. Somewhere behind them, a tuba sighs. | 0
 timeout: The doors close. Fate made the call. | 0
 
@@ -170,8 +181,10 @@ timeout: The dog decides for you. It is still a stick. | 0
 
 variant: You can't see what it is. It smells of sausage. There are more pieces in the grass.
 choice: drop_it | The dog drops it. You notice a strange blue powder on it. Good call. | 1
-choice: allow_eat | The dog eats it. You spend the night at the vet. | -2
-timeout: You hesitate. The dog swallows it. You spend the night at the vet. | -2
+choice: allow_eat | The dog eats it. Ten minutes later you are running to the vet. | -2
+sets: dog_poisoned
+timeout: You hesitate. The dog swallows it. Ten minutes later you are running to the vet. | -2
+sets: dog_poisoned
 
 
 scenario: A stranger stops and reaches out to pet your dog.
@@ -230,12 +243,14 @@ phase: Store
 time: 5
 
 variant: The label says it was made today.
-choice: buy + yes | The best sausage of your life. You will think about it for weeks. | 1
+choice: buy + yes | You buy two. They smell incredible. Dinner is sorted. | 1
+sets: good_sausage
 choice: no | You walk away. The man behind you buys all of it, very happily. | 0
 timeout: It sells out while you think. Rumors say it was good. | 0
 
 variant: The label says it was made last year.
 choice: buy + yes | You buy two. The cashier takes a step back. | -1
+sets: bad_sausage
 choice: no | The deli guy nods slowly. He respects you now. | 1
 timeout: It sells out while you think. You dodged something. | 0
 
@@ -278,7 +293,9 @@ time: 4
 variant: It is her third call in a row.
 choice: answer | 'Finally! Did you eat?' You did not. You talk for an hour. It is nice. | 1
 choice: decline | Mom calls your neighbor instead. The neighbor knocks. | -2
+sets: mom_ignored
 timeout: It rings out. She calls again. And again. And again. | -1
+sets: mom_ignored
 
 variant: You are in the shower with shampoo in your eyes.
 choice: answer | You grab the phone with wet hands. It falls in the bath. Mom hears everything. | -1
@@ -299,3 +316,98 @@ variant: He adds: 'I found a great new place!!'
 choice: pizza | 'Oh. Okay. Pizza.' He sounds a bit sad. The new place had live jazz. | -1
 choice: anything | The new place is great. He is very proud. You are very full. | 1
 timeout: You don't reply. He goes to the new place alone and posts about it. | -1
+
+# ================================================================ Consequences
+# These scenes are added to their part of the day only when an earlier outcome
+# set the flag they need.
+
+scenario: You slip into the office at 9:47. Your boss is standing right by the door.
+phase: Work
+needs: late_for_work
+time: 5
+choice: apologize | 'It happens. Once.' He walks away. You live to work another day. | 1
+choice: excuse | 'Traffic? You take the metro.' He walks away, taking notes in his head. | -1
+timeout: You freeze in the doorway. He looks at the clock, then at you, then at the clock. | -1
+
+
+scenario: You come home. The whole flat still smells of burnt milk.
+phase: Evening
+needs: milk_burned
+time: 5
+choice: air_out | Fresh air. The smell leaves. So does the warmth, but still. | 1
+choice: mask_smell | Now it smells of burnt milk AND vanilla. A bold new scent. | -1
+timeout: You get used to it. That is the worst part. | -1
+
+
+scenario: You come home with heavy bags. Your neighbor from the lift is at the entrance.
+phase: Evening
+needs: neighbor_helped or neighbor_snubbed
+time: 5
+
+variant: He grins and holds the door wide open for you.
+if: neighbor_helped
+choice: thank | 'Anytime, lift buddy.' Good neighbors are rare. | 1
+choice: ignore | You walk past in silence. His grin slowly fades. | -1
+timeout: You fumble with the bags. He waits. Eventually you all get in. | 0
+
+variant: He sees you. He remembers the lift. His hand is on the door.
+if: neighbor_snubbed
+choice: apologize | 'Sorry about this morning.' He snorts, then holds the door. Even. | 1
+choice: hold | 'Oh, NOW you want doors held.' The door closes. Slowly. With feeling. | -1 | ask him to hold it
+timeout: The door closes in your face. The lift has been avenged. | -1
+
+
+scenario: A flyer under your door: TUBA NIGHT, 8 PM. Someone wrote on it: 'for my lift buddy!'
+phase: Evening
+needs: tuba_buddy
+time: 5
+choice: yes | It is loud. It is wonderful. You now know four tuba jokes. | 1 | go to the concert
+choice: no | You stay home. Through the wall, a tuba plays something sad. For you. | 0 | stay home
+timeout: You stand there holding the flyer until 8 PM passes. | 0
+
+
+scenario: You are hungry. In the fridge: the sausage from the deli.
+phase: Evening
+needs: good_sausage or bad_sausage
+time: 5
+
+variant: It smells amazing. Garlic, smoke, a hint of joy.
+if: good_sausage
+choice: eat_it | Best dinner of the month. You eat it standing at the fridge, like a legend. | 1
+choice: throw_away | You throw away a perfectly good sausage. Somewhere, the deli guy feels it. | -1
+timeout: You close the fridge and go to bed hungry. The sausage waits for tomorrow. | 0
+
+variant: It smells like last year. It is slightly green.
+if: bad_sausage
+choice: eat_it | It tastes like last year too. You spend the night getting to know your bathroom. | -2
+choice: throw_away | Into the bin it goes. The bin seems unhappy too. | 1
+timeout: You close the fridge and go to bed hungry. Safe, at least. | 0
+
+
+scenario: The vet calls. The dog will be fine. Now, about the bill.
+phase: Evening
+needs: dog_poisoned
+time: 5
+choice: pay | You pay. The dog licks your face. Worth every coin. | 1
+choice: haggle | 'This is a clinic, not a market.' The bill grows a 'late fee'. | -1
+timeout: You stay silent. The vet sighs and sends the bill by email. Twice. | -1
+
+
+scenario: The smiling people with pamphlets are back at your door.
+phase: Evening
+needs: pamphlets_opened
+time: 4
+variant: This time they brought friends. And a guitar.
+choice: open | Forty minutes become two hours. You now know three songs about the end of the world. | -1
+choice: ignore | You stay very still. They sing one song to the door and leave. | 1
+timeout: They play the guitar until you open. You open. | -1
+
+
+scenario: 11 PM. Someone knocks on your door.
+phase: Night
+needs: mom_ignored
+time: 5
+variant: It is Mom. She brought soup. And questions.
+choice: let_in | Soup, questions, a hug. You did not eat today. She knew. | 1
+choice: pretend_asleep | She leaves the soup at the door with a note: 'I KNOW YOU ARE AWAKE.' | -1
+timeout: She has a spare key. Of course she has a spare key. | 0
