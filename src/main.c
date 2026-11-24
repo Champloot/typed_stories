@@ -1,11 +1,12 @@
-// typed_stories: a terminal typing game in C + ncurses.
+// typed_stories: a typing game in C, in a window (raylib) or a terminal (ncurses).
 // Packs (text files) -> scenarios with hidden variants -> answers typed in your own words.
 // A lexicon maps phrases to intents ("of course" means yes). Every outcome carries a mark that
 // adds up to the run's rating; fancier and fresher phrasing earns style points on top.
 //
 // Modules: util (helpers), lexicon (intents), pack (loading files, flags, meters), match (reading
 // answers), style (style points), day (building a day), rng (seeded randomness), daily (date,
-// word of the day), records (best results), ui (drawing), game (playing a run).
+// word of the day), records (best results), game (playing a run), and ui.h with two
+// screens behind it: ui_gl (raylib window) and ui_tty (ncurses terminal).
 #include "common.h"
 #include "daily.h"
 #include "game.h"

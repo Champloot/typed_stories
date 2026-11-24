@@ -209,7 +209,7 @@ class Game:
             fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
             os.chdir(PROJ); os.environ.update(TERM="xterm", HOME=home, TYPED_STORIES_DATE=date)
             for k in ("XDG_DATA_HOME", "LINES", "COLUMNS"): os.environ.pop(k, None)
-            os.execv(os.path.join(PROJ, "game"), ["./game"])
+            os.execv(os.path.join(PROJ, "game-tty"), ["./game-tty"])
         self.pump(0.5)
     def pump(self, w):
         end = time.time() + w

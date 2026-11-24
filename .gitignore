@@ -1,3 +1,4 @@
 build/
 game
+game-tty
 __pycache__/

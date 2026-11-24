@@ -1,5 +1,5 @@
 {
-  description = "Терминальная игра на печать (C + ncurses)";
+  description = "typed_stories: игра на печать (C + raylib, терминальная версия на ncurses)";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -24,10 +24,8 @@
         # Библиотеки: заголовки и .so находит обёртка gcc сама
         # (-I…/include и -L…/lib подставляются автоматически), путь для pkg-config тоже.
         buildInputs = with pkgs; [
-          ncurses
-          # Для графики потом — раскомментировать одну:
-          # raylib
-          # SDL2
+          ncurses   # ./game-tty: терминальная версия (отладка, тесты)
+          raylib    # ./game: окно (Makefile находит его через pkg-config)
         ];
       };
     };

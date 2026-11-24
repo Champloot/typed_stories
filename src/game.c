@@ -1,6 +1,5 @@
-// game: playing a run: input loop, outcomes, meters, summary, menu
-#include <ctype.h>
-#include <ncurses.h>
+// game: playing a run: input loop, outcomes, meters, summary, menu.
+// Knows nothing about the screen: it fills views from ui.h and reads keys.
 #include <time.h>
 #include <unistd.h>
 
@@ -38,51 +37,50 @@ typedef struct {
 
 static int today_mode;          // menu switch: the same day for everyone on a date
 
-static int is_backspace(int ch) {
-    return ch == KEY_BACKSPACE || ch == 127 || ch == 8;
+static void wait_key(void) {
+    ui_flush();                 // drop keys typed ahead so the screen is not skipped
+    while (ui_key(-1) == K_NONE) {}
 }
 
-static void upcase(char *dst, size_t cap, const char *src) {
-    size_t i = 0;
-    for (; src[i] && i + 1 < cap; i++) dst[i] = (char)toupper((unsigned char)src[i]);
-    dst[i] = '\0';
+static void wait_enter(void) {
+    ui_flush();
+    while (ui_key(-1) != K_ENTER) {}
 }
 
-// Row 0 of every screen: "Nerves 5  Money 3!  People 6    word: hedgehog".
-static void update_status(const Run *run) {
-    char s[256];
-    size_t n = 0;
-    s[0] = '\0';
-    for (int i = 0; i < run->p->nmeters && n < sizeof s; i++)
-        n += (size_t)snprintf(s + n, sizeof s - n, "%s%s %d%s", i ? "  " : "",
-                              run->p->meter_names[i], run->meters[i], run->meters[i] <= 2 ? "!" : "");
-    if (run->word && n < sizeof s)
-        snprintf(s + n, sizeof s - n, "%sword: %s%s", n ? "    " : "", run->word, run->word_used ? " (used)" : "");
-    ui_set_status(s);
+static Hud hud_of(const Run *run) {
+    Hud h;
+    memset(&h, 0, sizeof h);
+    h.nmeters = run->p->nmeters;
+    for (int i = 0; i < h.nmeters; i++) {
+        h.meter_names[i] = run->p->meter_names[i];
+        h.meters[i] = run->meters[i];
+    }
+    h.word = run->word;
+    h.word_used = run->word_used;
+    return h;
 }
 
-// Applies an outcome's meter changes and appends "nerves -1  money +2" to note.
-static void apply_effects(Run *run, const Effects *fx, char *note, size_t cap) {
-    for (int i = 0; i < fx->n; i++) {
-        int m = fx->meter[i], v = run->meters[m] + fx->delta[i];
+static void update_hud(const Run *run) {
+    Hud h = hud_of(run);
+    ui_set_hud(&h);
+}
+
+// Applies an outcome's meter changes and lists them in fx.
+static void apply_effects(Run *run, const Effects *e, EffectsView *fx) {
+    for (int i = 0; i < e->n; i++) {
+        int m = e->meter[i], v = run->meters[m] + e->delta[i];
         if (v < 0) v = 0;
         if (v > METER_MAX) v = METER_MAX;
         run->meters[m] = v;
-        size_t n = strlen(note);
-        snprintf(note + n, cap - n, "%s%s %+d", n ? "   " : "", run->p->meter_names[m], fx->delta[i]);
+        if (fx->n < 2 * MAX_EFFECTS) {
+            fx->name[fx->n] = run->p->meter_names[m];
+            fx->delta[fx->n] = e->delta[i];
+            fx->n++;
+        }
     }
     if (run->ended < 0)
         for (int m = 0; m < run->p->nmeters; m++)
             if (run->meters[m] == 0) { run->ended = m; break; }
-}
-
-// Draws the meter changes of an outcome; returns the rows used.
-static int draw_effects(int row, const char *fxnote) {
-    if (!*fxnote) return 0;
-    attron(COLOR_PAIR(C_WARN));
-    int n = print_wrapped(row, 4, fxnote);
-    attroff(COLOR_PAIR(C_WARN));
-    return n;
 }
 
 // Plays one event and returns its mark. The mark is never shown: the player
@@ -92,10 +90,28 @@ static int play_event(Run *run, Event *e, int idx, int total) {
     const Scenario *s = e->s;
     const Variant  *v = e->v;
     Stats *st = &run->st;
-    char input[INPUT_MAX + 1] = "", msg[200] = "", fxnote[200] = "";
+    char input[INPUT_MAX + 1] = "", msg[200] = "";
     int len = 0;
 
-    show_intro(e, idx, total);
+    OutcomeView out;
+    memset(&out, 0, sizeof out);
+    out.scene.idx = idx;
+    out.scene.total = total;
+    out.scene.phase = e->phase;
+    out.scene.title = s->title;
+    out.scene.detail = v->detail;
+
+    PromptView pv;
+    memset(&pv, 0, sizeof pv);
+    pv.scene = out.scene;
+    pv.nhints = v->nchoices;
+    for (int c = 0; c < v->nchoices; c++) pv.hints[c] = v->choices[c].label;
+    pv.input = input;
+    pv.msg = msg;
+    pv.limit = s->time_limit;
+
+    ui_intro(&out.scene);
+    wait_enter();
     double start = now();
 
     while (1) {
@@ -106,44 +122,36 @@ static int play_event(Run *run, Event *e, int idx, int total) {
             const Choice *fate = NULL;
             if (v->on_timeout == TO_RANDOM) fate = &v->choices[rng_below(&e->fate, v->nchoices)];
             apply_sets(&run->flags, &v->timeout_sets);
-            apply_effects(run, &v->timeout_fx, fxnote, sizeof fxnote);
+            apply_effects(run, &v->timeout_fx, &out.fx);
             if (fate) {
                 apply_sets(&run->flags, &fate->sets);
-                apply_effects(run, &fate->fx, fxnote, sizeof fxnote);
+                apply_effects(run, &fate->fx, &out.fx);
             }
-            update_status(run);
-
-            erase();
-            draw_header(idx, total, e->phase);
-            int r = draw_situation(s, v, 0) + 1;
-            attron(COLOR_PAIR(C_BAD));
-            mvprintw(r, 4, "TIME'S UP");
-            attroff(COLOR_PAIR(C_BAD));
-            r += 2;
-            r += print_wrapped(r, 4, v->timeout_text);
-            if (fate) r += print_wrapped(r, 4, fate->result);
-            if (*fxnote) r += 1 + draw_effects(r + 1, fxnote);
-            mvprintw(r + 1, 4, "(press any key)");
-            refresh();
+            update_hud(run);
+            out.typed = NULL;
+            out.text = v->timeout_text;
+            out.fate = fate ? fate->result : NULL;
+            ui_outcome(&out);
             wait_key();
             return fate ? fate->mark : v->timeout_mark;
         }
 
-        draw_prompt(e, input, msg, left, idx, total);
+        pv.left = left;
+        ui_prompt(&pv);
 
-        int ch = getch();
-        if (ch == ERR || ch == KEY_RESIZE) continue;
+        int ch = ui_key(16);
+        if (ch == K_NONE || ch == K_OTHER) continue;
 
-        if (is_backspace(ch)) {
+        if (ch == K_BACKSPACE) {
             if (len) { input[--len] = '\0'; st->erased++; }
             continue;
         }
-        if (ch == 23) {                         // Ctrl-W: erase the last word
+        if (ch == K_CTRL_W) {                   // erase the last word
             while (len && input[len - 1] == ' ') { input[--len] = '\0'; st->erased++; }
             while (len && input[len - 1] != ' ') { input[--len] = '\0'; st->erased++; }
             continue;
         }
-        if (ch == 21) {                         // Ctrl-U: erase everything
+        if (ch == K_CTRL_U) {                   // erase everything
             st->erased += len;
             len = 0;
             input[0] = '\0';
@@ -158,7 +166,7 @@ static int play_event(Run *run, Event *e, int idx, int total) {
             }
             continue;
         }
-        if (ch != '\n' && ch != '\r' && ch != KEY_ENTER) continue;
+        if (ch != K_ENTER) continue;
 
         char norm[INPUT_MAX + 1];
         normalize(input, norm, sizeof norm);
@@ -190,79 +198,44 @@ static int play_event(Run *run, Event *e, int idx, int total) {
         }
         st->style += pts + bonus;
         apply_sets(&run->flags, &c->sets);
-        apply_effects(run, &c->fx, fxnote, sizeof fxnote);
-        update_status(run);
+        apply_effects(run, &c->fx, &out.fx);
+        update_hud(run);
 
-        erase();
-        draw_header(idx, total, e->phase);
-        int r = draw_situation(s, v, 0) + 1;
-        attron(COLOR_PAIR(C_OK));
-        mvprintw(r, 4, "\"%s\"", input);
-        attroff(COLOR_PAIR(C_OK));
-        r += 2;
-        r += print_wrapped(r, 4, c->result);
-        if (*fxnote) r += 1 + draw_effects(r + 1, fxnote);
-        char note[240];
-        snprintf(note, sizeof note, "style %c +%d%s%s%s   %.1fs", style_rank(pts), pts,
-                 m.typo ? "  (typo)" : "", before >= 0.5 ? "  (heard that before)" : "",
-                 bonus ? "  WORD OF THE DAY +100" : m.word ? "  (word already used today)" : "", elapsed);
-        attron(COLOR_PAIR(C_DIM));
-        int nl = print_wrapped(r + 1, 4, note);
-        attroff(COLOR_PAIR(C_DIM));
-        mvprintw(r + 1 + nl + 1, 4, "(press any key)");
-        refresh();
+        out.typed = input;
+        out.text = c->result;
+        out.fate = NULL;
+        out.rank = style_rank(pts);
+        out.points = pts;
+        out.typo = m.typo;
+        out.repeated = before >= 0.5;
+        out.word_bonus = bonus != 0;
+        out.word_again = m.word && !bonus;
+        out.seconds = elapsed;
+        ui_outcome(&out);
         wait_key();
         return c->mark;
     }
 }
 
 static void show_day_start(const Run *run) {
-    char line[320], up[64];
-    erase();
-    ui_draw_status();
-    int r = 2;
-    attron(A_BOLD);
-    r += print_wrapped(r, 4, run->p->name) + 1;
-    attroff(A_BOLD);
-    if (today_mode) snprintf(line, sizeof line, "Today, %s. Everyone gets the same day.", run->date.pretty);
-    else snprintf(line, sizeof line, "Free play: a random day.");
-    r += print_wrapped(r, 4, line) + 1;
-    if (run->word) {
-        upcase(up, sizeof up, run->word);
-        snprintf(line, sizeof line, "Word of the day: %s", up);
-        attron(A_BOLD);
-        r += print_wrapped(r, 4, line);
-        attroff(A_BOLD);
-        r += print_wrapped(r, 4, "Slip it into any answer today for +100 style. It does not change your rating.") + 1;
-    }
-    if (run->p->nmeters)
-        r += print_wrapped(r, 4, "Keep the meters at the top above zero, or the day ends early.") + 1;
+    DayStartView v;
+    memset(&v, 0, sizeof v);
+    v.pack = run->p->name;
+    v.today_mode = today_mode;
+    v.date = run->date.pretty;
+    v.word = run->word;
+    v.has_meters = run->p->nmeters > 0;
     const Result *b = record_best(run->p->name);
     const Result *d = today_mode ? record_day(run->date.iso, run->p->name) : NULL;
-    if (b) {
-        if (d) snprintf(line, sizeof line, "Your best: %d. Today's best: %d.", b->score, d->score);
-        else snprintf(line, sizeof line, "Your best: %d.", b->score);
-        r += print_wrapped(r, 4, line) + 1;
-    }
-    attron(COLOR_PAIR(C_DIM));
-    print_wrapped(r, 4, "Press Enter to start.");
-    attroff(COLOR_PAIR(C_DIM));
-    refresh();
+    v.best = b ? b->score : -1;
+    v.today = d ? d->score : -1;
+    ui_day_start(&v);
     wait_enter();
 }
 
 static void show_ending(const Run *run) {
-    char line[200], up[64];
-    erase();
-    ui_draw_status();
-    upcase(up, sizeof up, run->p->meter_names[run->ended]);
-    snprintf(line, sizeof line, "%s HIT ZERO. THE DAY IS OVER.", up);
-    attron(COLOR_PAIR(C_BAD) | A_BOLD);
-    int r = 3 + print_wrapped(3, 4, line) + 1;
-    attroff(COLOR_PAIR(C_BAD) | A_BOLD);
-    r += print_wrapped(r, 4, run->p->meter_endings[run->ended]);
-    mvprintw(r + 1, 4, "(press any key)");
-    refresh();
+    EndingView v = { run->p->meter_names[run->ended], run->p->meter_endings[run->ended] };
+    ui_ending(&v);
     wait_key();
 }
 
@@ -272,94 +245,64 @@ static void show_ending(const Run *run) {
 static void show_summary(const Run *run, int events) {
     const Pack *p = run->p;
     const Stats *st = &run->st;
+    SummaryView v;
+    memset(&v, 0, sizeof v);
     int span = st->best - st->worst, got = st->marks - st->worst;
-    int rating = span > 0 ? (got * 20 + span) / (2 * span) : 10;
+    v.rating = span > 0 ? (got * 20 + span) / (2 * span) : 10;
     int vi = span > 0 ? got * p->nverdicts / span : p->nverdicts - 1;
     if (vi >= p->nverdicts) vi = p->nverdicts - 1;
     if (vi < 0) vi = 0;
-    double acc = st->typed ? 100.0 * (st->typed - st->erased) / st->typed : 100.0;
-    double wpm = st->typing_time > 0 ? (st->sent / 5.0) / (st->typing_time / 60.0) : 0;
-    int avg = events ? (st->style + events / 2) / events : 0;
+    v.verdict = p->verdicts[vi];
+    v.accuracy = st->typed ? 100.0 * (st->typed - st->erased) / st->typed : 100.0;
+    v.wpm = st->typing_time > 0 ? (st->sent / 5.0) / (st->typing_time / 60.0) : 0;
+    v.style_avg = events ? (st->style + events / 2) / events : 0;
+    v.style_rank = style_rank(v.style_avg);
     int meters = 0;
     for (int m = 0; m < p->nmeters; m++) meters += run->meters[m];
-    int score = rating * 100 + st->style + meters * 10;
+    v.score = v.rating * 100 + st->style + meters * 10;
 
     const Result *pb = record_best(p->name);
-    int prev_best = pb ? pb->score : -1;
-    Result res = { score, rating, avg };
-    int new_best, new_day;
-    record_result(run->date.iso, p->name, res, today_mode, &new_best, &new_day);
+    v.prev_best = pb ? pb->score : -1;
+    Result res = { v.score, v.rating, v.style_avg };
+    record_result(run->date.iso, p->name, res, today_mode, &v.new_best, &v.new_day);
     records_save();
+    const Result *d = record_day(run->date.iso, p->name);
 
-    erase();
-    ui_draw_status();
-    char line[320];
-    snprintf(line, sizeof line, "%s: %s", run->ended >= 0 ? "DAY OVER EARLY" : "RUN COMPLETE", p->name);
-    int r = 2 + print_wrapped(2, 4, line);
-    attron(A_BOLD);
-    mvprintw(r + 1, 4, "Rating: %d/10", rating);
-    attroff(A_BOLD);
-    r += 3;
-    r += print_wrapped(r, 4, p->verdicts[vi]);
-    r += 1;
-    mvprintw(r++, 4, "Style:    %c (avg %d per answer)", style_rank(avg), avg);
-    if (run->word)
-        mvprintw(r++, 4, "Word:     %s, %s", run->word, run->word_used ? "used (+100)" : "not used");
-    if (p->nmeters) {
-        size_t n = (size_t)snprintf(line, sizeof line, "Meters:  ");
-        for (int m = 0; m < p->nmeters && n < sizeof line; m++)
-            n += (size_t)snprintf(line + n, sizeof line - n, " %s %d", p->meter_names[m], run->meters[m]);
-        r += print_wrapped(r, 4, line);
-    }
-    mvprintw(r++, 4, "Typing:   %.0f%% accuracy, %.0f wpm", acc, wpm);
-    mvprintw(r++, 4, "Timeouts: %d, not understood: %d", st->timeouts, st->misses);
-    r++;
-    attron(A_BOLD);
-    if (new_best && prev_best >= 0) mvprintw(r++, 4, "Score:    %d  NEW RECORD! (was %d)", score, prev_best);
-    else if (new_best)              mvprintw(r++, 4, "Score:    %d  (first record)", score);
-    else                            mvprintw(r++, 4, "Score:    %d  (best %d)", score, prev_best);
-    attroff(A_BOLD);
-    if (today_mode) {
-        const Result *d = record_day(run->date.iso, p->name);
-        mvprintw(r++, 4, "Today:    best %d%s", d ? d->score : score, new_day ? " (that's you)" : "");
-    }
-    mvprintw(r + 1, 4, "(press any key)");
-    refresh();
+    v.pack = p->name;
+    v.ended_early = run->ended >= 0;
+    v.word = run->word;
+    v.word_used = run->word_used;
+    v.meters = hud_of(run);
+    v.timeouts = st->timeouts;
+    v.misses = st->misses;
+    v.today_mode = today_mode;
+    v.today_best = d ? d->score : v.score;
+    ui_summary(&v);
     wait_key();
 }
 
 int choose_pack(void) {
-    timeout(-1);
+    ui_set_hud(NULL);
     while (1) {
         Date d = today();
-        const char *w = word_of_day(&d);
-        erase();
-        int r = 2 + print_wrapped(2, 4, "TYPING GAME - choose who you are today") + 1;
+        MenuView v;
+        memset(&v, 0, sizeof v);
+        v.npacks = npacks;
         for (int i = 0; i < npacks; i++) {
-            mvprintw(r + i, 4, "%d) %s", i + 1, packs[i].name);
             const Result *b = record_best(packs[i].name);
             const Result *t = record_day(d.iso, packs[i].name);
-            char rec[80] = "";
-            if (b) snprintf(rec, sizeof rec, "best %d", b->score);
-            if (t) snprintf(rec + strlen(rec), sizeof rec - strlen(rec), "%stoday %d", *rec ? "  " : "", t->score);
-            if (*rec) {
-                attron(COLOR_PAIR(C_DIM));
-                printw("   %s", rec);
-                attroff(COLOR_PAIR(C_DIM));
-            }
+            v.packs[i].name = packs[i].name;
+            v.packs[i].best = b ? b->score : -1;
+            v.packs[i].today = t ? t->score : -1;
         }
-        r += npacks + 1;
-        mvprintw(r, 4, "t) mode: %s", today_mode ? "today" : "free play");
-        attron(COLOR_PAIR(C_DIM));
-        printw(today_mode ? "  (the same day for everyone, %s)" : "  (a random day)", d.pretty);
-        attroff(COLOR_PAIR(C_DIM));
-        mvprintw(r + 1, 4, "q) quit");
-        if (w) mvprintw(r + 3, 4, "Word of the day: %s", w);
-        refresh();
-        int ch = getch();
-        if (ch == 'q') { timeout(16); return -1; }
+        v.today_mode = today_mode;
+        v.date = d.pretty;
+        v.word = word_of_day(&d);
+        ui_menu(&v);
+        int ch = ui_key(-1);
+        if (ch == 'q') return -1;
         if (ch == 't') { today_mode = !today_mode; continue; }
-        if (ch >= '1' && ch < '1' + npacks) { timeout(16); return ch - '1'; }
+        if (ch >= '1' && ch < '1' + npacks) return ch - '1';
     }
 }
 
@@ -385,7 +328,7 @@ void run_pack(const Pack *p) {
     if (f >= 0 && today_mode) run.flags |= (uint64_t)1 << f;
 
     style_new_run();
-    update_status(&run);
+    update_hud(&run);
     show_day_start(&run);
 
     int *order = xrealloc(NULL, (size_t)p->count * sizeof *order);
@@ -415,5 +358,5 @@ void run_pack(const Pack *p) {
     if (run.ended >= 0) show_ending(&run);
     style_save();
     show_summary(&run, played);
-    ui_set_status("");
+    ui_set_hud(NULL);
 }

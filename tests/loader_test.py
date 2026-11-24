@@ -5,7 +5,7 @@
 """
 import os, shutil, subprocess, sys, tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GAME = os.path.join(ROOT, "game")
+GAME = os.path.join(ROOT, "game-tty")
 S = tempfile.mkdtemp(prefix="typed_stories_loader_")
 os.environ["HOME"] = S          # never touch the real style/records files
 
