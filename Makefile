@@ -17,7 +17,7 @@ all: game game-tty
 
 # the game in a window (raylib)
 game: $(CORE_O) $(GL_O)
-	$(CC) $(CFLAGS) -o $@ $^ $(RAYLIB_LIBS)
+	$(CC) $(CFLAGS) -o $@ $^ $(RAYLIB_LIBS) -lm
 
 # the same game in a terminal (ncurses): for development and the tests
 game-tty: $(CORE_O) build/ui_tty.o
