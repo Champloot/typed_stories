@@ -101,5 +101,10 @@ void mark_range(const Variant *v, int *lo, int *hi) {
         if (v->timeout_mark < *lo) *lo = v->timeout_mark;
         if (v->timeout_mark > *hi) *hi = v->timeout_mark;
     }
+    for (int c = 0; c < v->nchoices; c++)        // a lost minigame is an outcome too
+        if (v->choices[c].has_fail) {
+            if (v->choices[c].fail_mark < *lo) *lo = v->choices[c].fail_mark;
+            if (v->choices[c].fail_mark > *hi) *hi = v->choices[c].fail_mark;
+        }
 }
 

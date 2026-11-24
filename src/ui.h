@@ -6,6 +6,7 @@
 #define UI_H
 
 #include "common.h"
+#include "minigame.h"
 
 /* Keys as the game sees them. Printable ASCII (32..126) comes as itself. */
 enum {
@@ -91,6 +92,25 @@ typedef struct {
     double       left, limit;
 } WalkView;
 
+/* A minigame after the answer (see minigame.h). */
+typedef struct {
+    Scene        scene;
+    int          kind, state;   // MG_*
+    const char  *text;          // the caption, or the line to sing
+    int          n;
+    double       progress;      // 0..1
+    double       needle, zone_lo, zone_hi;      // timing
+    int          tries;
+    int          typed;         // lyrics: letters typed right
+    double       missed_ago, wrong_ago, ended_ago, moved_ago;   // seconds since
+    int          w, h, px, py, ppx, ppy;        // cross and catch
+    char         cells[MG_H][MG_W + 1];         // '.' free, 'b' bike, 'c' car, 'o' apple
+    int          lane_dir[MG_H];                // cross: -1, +1, 0 for a sidewalk
+    double       lane_step[MG_H], lane_next[MG_H];
+    int          caught, missed;
+    double       left, limit;
+} MinigameView;
+
 /* Meter changes of an outcome (a random timeout can have two sets). */
 typedef struct {
     int         n;
@@ -154,6 +174,8 @@ void ui_finale(const FinaleView *v);    // how the story ends, when the day was 
 void ui_summary(const SummaryView *v);
 void ui_set_theme(const char *style);   // a pack's 'style:'; NULL is the menu's look
 void ui_walk(const WalkView *v);
+void ui_minigame(const MinigameView *v);
+int  ui_presses(void);          // real key presses since the last call (held keys don't repeat); -1 if every key event is one
 int  ui_held(void);             // DIR_* held right now; -1 if this screen can't tell (then each key press is a step)
 int  ui_key(int timeout_ms);    // waits for a key (forever if timeout_ms < 0); K_NONE on timeout
 void ui_flush(void);            // forget keys pressed ahead

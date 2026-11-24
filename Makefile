@@ -21,7 +21,7 @@ game: $(CORE_O) $(GL_O)
 
 # the same game in a terminal (ncurses): for development and the tests
 game-tty: $(CORE_O) build/ui_tty.o
-	$(CC) $(CFLAGS) -o $@ $^ -lncurses
+	$(CC) $(CFLAGS) -o $@ $^ -lncurses -lm
 
 build/%_gl.o: src/%_gl.c | build
 	$(CC) $(CFLAGS) $(RAYLIB_CFLAGS) -c -o $@ $<

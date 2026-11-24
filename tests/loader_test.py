@@ -257,7 +257,7 @@ bad("finale_if_too_many", FN + "".join(f"finale_if: said_yes | t{i} | x\n" for i
 # --- pictures and activities
 ST = V.replace("time: 3\n", "time: 3\nstage: walk\n").replace("variant: cue one\n", "variant: cue one\nprops: dog=growl stranger=near\n").replace("choice: yes | ok | 1\n", "choice: yes | ok | 1\nshow: pet\n")
 PL = V.replace("time: 3\n", "time: 3\nplay: store 9\n").replace("choice: yes | ok | 1\n", "choice: yes | ok | 1\ngoal: aisle4\n").replace("choice: no | meh\n", "choice: no | meh\ngoal: checkout\n")
-bad("stage_unknown", ST.replace("stage: walk", "stage: moon"), "unknown stage 'moon' (there is: walk)")
+bad("stage_unknown", ST.replace("stage: walk", "stage: moon"), "unknown stage 'moon' (see FORMAT.md for the list)")
 bad("stage_twice", ST.replace("stage: walk", "stage: walk\nstage: walk"), "second 'stage' in one scenario")
 bad("props_no_equals", ST.replace("dog=growl", "dog"), "'props' is: name=value name=value (got 'dog')")
 bad("props_caps", ST.replace("dog=growl", "dog=Growl"), "'props' names and values are lowercase letters, digits and '_'")
@@ -271,6 +271,19 @@ bad("goal_without_play", V.replace("choice: yes | ok | 1\n", "choice: yes | ok |
 bad("goal_unknown_spot", PL.replace("goal: aisle4", "goal: aisle9"), "no spot 'aisle9' in 'store' (there are: aisle1 .. aisle8, checkout)")
 bad("goal_missing", PL.replace("goal: checkout\n", ""), "choice 'no' has no 'goal' (where to walk)")
 bad("goal_on_timeout", PL + "goal: aisle1\n", "'goal' must come right after a 'choice' line")
+# --- minigames
+AC = V.replace("choice: yes | ok | 1\n", "choice: yes | ok | 1\nact: mash 2.5 14 hold it!\nfail: dropped | -1\n")
+bad("act_unknown", AC.replace("act: mash", "act: dance"), "'act' is: mash|timing|cross|catch|lyrics seconds [count] [text]")
+bad("act_no_seconds", AC.replace("act: mash 2.5 14 hold it!", "act: mash"), "'act' needs the seconds it lasts")
+bad("act_too_long", AC.replace("mash 2.5", "mash 61"), "'act' needs the seconds it lasts, more than 0 and up to 60")
+bad("act_count_big", AC.replace("2.5 14", "2.5 99"), "the count in 'act' is 1 to 50")
+bad("act_after_timeout", V + "act: mash 2\n", "'act' must come right after a 'choice' line")
+bad("act_twice", AC.replace("act: mash 2.5 14 hold it!", "act: mash 2.5 14 hold it!\nact: mash 2"), "second 'act' for the same choice")
+bad("lyrics_no_text", AC.replace("act: mash 2.5 14 hold it!", "act: lyrics 5"), "'act: lyrics' needs the line to type")
+bad("lyrics_caps", AC.replace("act: mash 2.5 14 hold it!", "act: lyrics 5 Happy Birthday"), "lyrics are lowercase letters and spaces")
+bad("fail_without_act", V.replace("choice: yes | ok | 1\n", "choice: yes | ok | 1\nfail: oops\n"), "'fail' must come after a choice's 'act' line")
+bad("fail_twice", AC.replace("fail: dropped | -1", "fail: dropped | -1\nfail: again"), "second 'fail' for the same choice")
+bad("fail_bad_mark", AC.replace("dropped | -1", "dropped | lots"), "mark must be an integer")
 # --- words.lst
 def wordbad(name, words, expect):
     bad(name, None, expect, files={"01-t.txt": V, "words.lst": words})
@@ -283,6 +296,7 @@ import subprocess as sp
 for nm, files in (("meters_valid", {"01-t.txt": M}),
                   ("needs_builtin_valid", {"01-t.txt": F.replace("needs: said_yes", "needs: wordsmith or today")}),
                   ("stage_play_valid", {"01-t.txt": ST + "\nscenario: S2\ntime: 3\nplay: store 5\nchoice: yes | ok\ngoal: aisle1\ntimeout: late\n"}),
+                  ("act_valid", {"01-t.txt": AC.replace("fail: dropped | -1\n", "fail: dropped | -1\nsets: dropped_it\nshow: close\n").replace("choice: no | meh\n", "choice: no | meh\nact: lyrics 5 la la la\n")}),
                   ("finales_valid", {"01-t.txt": "style: terminal\n" + FN + "finale_if: said_yes or today | Yes | You said yes.\n"}),
                   ("words_valid", {"01-t.txt": V, "words.lst": "# fine\nhedgehog\nnarwhal\n"})):
     try:

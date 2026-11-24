@@ -2,19 +2,19 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "stage_gl.h"
+#include "stage_parts.h"
 
-static const StagePal *P;
+const StagePal *P;
 
-static Color C(Color c) { return ColorAlpha(c, P->alpha * (float)c.a / 255.0f); }
-static Color CA(Color c, float a) { return ColorAlpha(c, P->alpha * a); }
+Color C(Color c) { return ColorAlpha(c, P->alpha * (float)c.a / 255.0f); }
+Color CA(Color c, float a) { return ColorAlpha(c, P->alpha * a); }
 
-static float clamp01(float x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
-static float ease(float x) { x = clamp01(x); return x * x * (3 - 2 * x); }
-static float lerp(float a, float b, float t) { return a + (b - a) * t; }
+float clamp01(float x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
+float ease(float x) { x = clamp01(x); return x * x * (3 - 2 * x); }
+float lerp(float a, float b, float t) { return a + (b - a) * t; }
 
 // "dog=growl stranger=near": is dog=growl there? Is there a stranger at all?
-static int prop_is(const char *props, const char *key, const char *val) {
+int prop_is(const char *props, const char *key, const char *val) {
     if (!props) return 0;
     char want[64];
     snprintf(want, sizeof want, "%s=%s", key, val);
@@ -24,7 +24,7 @@ static int prop_is(const char *props, const char *key, const char *val) {
     return 0;
 }
 
-static int has_key(const char *props, const char *key) {
+int has_key(const char *props, const char *key) {
     if (!props) return 0;
     char want[64];
     snprintf(want, sizeof want, "%s=", key);
@@ -35,33 +35,36 @@ static int has_key(const char *props, const char *key) {
     return 0;
 }
 
-static int is(const char *show, const char *s) { return show && !strcmp(show, s); }
+int is(const char *show, const char *s) { return show && !strcmp(show, s); }
 
 // raylib wants triangles in one winding; take them in any.
-static void tri(Vector2 a, Vector2 b, Vector2 c, Color col) {
+void tri(Vector2 a, Vector2 b, Vector2 c, Color col) {
     float cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
     if (cross > 0) DrawTriangle(a, c, b, col);
     else DrawTriangle(a, b, c, col);
 }
 
-static void limb(Vector2 a, Vector2 b, float th, Color c) {
+void limb(Vector2 a, Vector2 b, float th, Color c) {
     DrawLineEx(a, b, th, c);
     DrawCircleV(a, th / 2, c);
     DrawCircleV(b, th / 2, c);
 }
 
-static Vector2 v2(float x, float y) { return (Vector2){ x, y }; }
+Vector2 v2(float x, float y) { return (Vector2){ x, y }; }
 
 /* ---------- figures ---------- */
 
+Vector2 person_head;
+
 // A person: legs, a body, a head. Returns the shoulder; arms are the caller's.
-static Vector2 person(float x, float gy, float k, int dir, float phase, int moving, Color c) {
+Vector2 person(float x, float gy, float k, int dir, float phase, int moving, Color c) {
     float hip = gy - 2.2f * k, a = moving ? sinf(phase) * 0.45f : 0;
     limb(v2(x, hip), v2(x + sinf(a) * 2.1f * k, gy - 0.1f * k), 0.3f * k, c);
     limb(v2(x, hip), v2(x - sinf(a) * 2.1f * k, gy - 0.1f * k), 0.3f * k, c);
     float bob = moving ? fabsf(sinf(phase)) * 0.12f * k : 0;
     DrawRectangleRounded((Rectangle){ x - 0.5f * k, hip - 2.5f * k - bob, 1.0f * k, 2.7f * k }, 0.6f, 8, c);
-    DrawCircleV(v2(x + dir * 0.1f * k, hip - 3.25f * k - bob), 0.62f * k, c);
+    person_head = v2(x + dir * 0.1f * k, hip - 3.25f * k - bob);
+    DrawCircleV(person_head, 0.62f * k, c);
     return v2(x, hip - 2.2f * k - bob);
 }
 
@@ -149,7 +152,7 @@ static void item(const char *what, float x, float y, float k, float rot) {
     }
 }
 
-static void heart(float x, float y, float s, Color c) {
+void heart(float x, float y, float s, Color c) {
     DrawCircleV(v2(x - s * 0.5f, y), s * 0.55f, c);
     DrawCircleV(v2(x + s * 0.5f, y), s * 0.55f, c);
     tri(v2(x - s * 1.02f, y + s * 0.15f), v2(x + s * 1.02f, y + s * 0.15f), v2(x, y + s * 1.3f), c);
@@ -157,7 +160,7 @@ static void heart(float x, float y, float s, Color c) {
 
 /* ---------- the dog walk ---------- */
 
-static float wrapf(float v, float m) { v = fmodf(v, m); return v < 0 ? v + m : v; }
+float wrapf(float v, float m) { v = fmodf(v, m); return v < 0 ? v + m : v; }
 
 static void walk_stage(const char *props, const char *show, Rectangle b, double ts, double tw) {
     float k = b.height / 11.0f, gy = b.y + b.height * 0.84f;
@@ -249,6 +252,7 @@ static void walk_stage(const char *props, const char *show, Rectangle b, double 
     if (is(show, "stranger_leaves")) { sx = sx_t + (float)tw * 5.5f * k; s_moving = 1; s_dir = 1; }
     float grab = is(show, "grab") ? ease((float)tw / 0.4f) : 0;
     dx += grab * 1.4f * k;
+    if (is(show, "act")) dx -= P->act * 2.5f * k + sinf((float)t * 20) * 0.1f * k;     // you pull the dog back
 
     // the owner (you)
     Vector2 osh = person(ox, gy, k, 1, phase, moving, C(P->accent));
@@ -316,11 +320,72 @@ static void walk_stage(const char *props, const char *show, Rectangle b, double 
         }
 }
 
+/* ---------- parts the other pictures share ---------- */
+
+void label(const char *s, float x, float y, float size, Color c, int align, int heavy) {
+    Font f = heavy ? P->bold : P->font;
+    float w = MeasureTextEx(f, s, size, size * 0.02f).x;
+    if (align == 0) x -= w / 2;
+    if (align > 0) x -= w;
+    DrawTextEx(f, s, v2(x, y), size, size * 0.02f, C(c));
+}
+
+// A speech bubble with a tail pointing at (tx, ty).
+void bubble(Rectangle r, float tx, float ty, Color fill) {
+    float cx = r.x + r.width / 2, by = ty > r.y ? r.y + r.height : r.y;
+    tri(v2(cx - r.height * 0.25f, by), v2(cx + r.height * 0.25f, by), v2(tx, ty), C(fill));
+    DrawRectangleRounded(r, 0.5f, 10, C(fill));
+}
+
+void face(Vector2 head, float k, int mood, Color c) {
+    DrawCircleV(v2(head.x - 0.2f * k, head.y - 0.1f * k), 0.07f * k, c);
+    DrawCircleV(v2(head.x + 0.2f * k, head.y - 0.1f * k), 0.07f * k, c);
+    if (mood > 0) DrawRing(v2(head.x, head.y + 0.05f * k), 0.22f * k, 0.3f * k, 20, 160, 12, c);
+    if (mood < 0) DrawRing(v2(head.x, head.y + 0.42f * k), 0.22f * k, 0.3f * k, 200, 340, 12, c);
+    if (mood == 2) DrawRectangle((int)(head.x - 0.3f * k), (int)(head.y + 0.15f * k), (int)(0.6f * k), (int)(0.12f * k), c);
+}
+
+// Little lines around something that rings, buzzes or shakes.
+void buzz(float x, float y, float r, Color c) {
+    double t = GetTime();
+    for (int i = 0; i < 3; i++) {
+        float a = 0.5f + 0.5f * sinf((float)t * 18 + i);
+        DrawRing(v2(x, y), r + i * r * 0.35f, r + i * r * 0.35f + r * 0.1f, -50, 50, 10, CA(c, a * 0.8f));
+        DrawRing(v2(x, y), r + i * r * 0.35f, r + i * r * 0.35f + r * 0.1f, 130, 230, 10, CA(c, a * 0.8f));
+    }
+}
+
+// Floating notes, z's, or sparkles: small marks drifting up from a point.
+void drift(const char *mark, float x, float y, float k, Color c, double t) {
+    for (int i = 0; i < 3; i++) {
+        float f = wrapf((float)t * 0.5f + i * 0.33f, 1);
+        label(mark, x + sinf(f * 6 + i) * 0.5f * k + i * 0.5f * k, y - f * 3 * k, (0.7f + 0.3f * i) * k, CA(c, 1 - f), 0, 1);
+    }
+}
+
+void room(Rectangle b, float gy, Color wall, Color floor) {
+    DrawRectangleRec(b, C(wall));
+    DrawRectangle((int)b.x, (int)gy, (int)b.width, (int)(b.y + b.height - gy), C(floor));
+    DrawLineEx(v2(b.x, gy), v2(b.x + b.width, gy), 2, C(P->faint));
+}
+
+typedef void (*StageFn)(const char *props, const char *show, Rectangle b, double ts, double tw);
+
+static const struct { const char *name; StageFn fn; } stages[] = {
+    { "walk", walk_stage },
+    { "bedroom", st_bedroom }, { "kitchen", st_kitchen }, { "fridge", st_fridge }, { "peephole", st_peephole },
+    { "doormat", st_doormat }, { "phone", st_phone },
+    { "lift", st_lift }, { "crosswalk", st_crosswalk }, { "taxi", st_taxi }, { "entrance", st_entrance },
+    { "desk", st_desk }, { "cake", st_cake }, { "coffee", st_coffee },
+    { "stand", st_stand }, { "deli", st_deli }, { "checkout", st_checkout }, { "cashier", st_cashier },
+};
+
 void stage_draw(const char *stage, const char *props, const char *show, Rectangle box,
                 double since_scene, double since_show, const StagePal *pal) {
     P = pal;
     DrawRectangleRounded(box, 0.06f, 8, C(pal->panel));
     BeginScissorMode((int)box.x, (int)box.y, (int)box.width, (int)box.height);
-    if (stage && !strcmp(stage, "walk")) walk_stage(props, show, box, since_scene, since_show);
+    for (size_t i = 0; stage && i < sizeof stages / sizeof *stages; i++)
+        if (!strcmp(stage, stages[i].name)) stages[i].fn(props, show, box, since_scene, since_show);
     EndScissorMode();
 }

@@ -152,18 +152,57 @@ show: stranger_leaves
 | `show` | после `choice` или `timeout` | одно слово: как картинка реагирует на исход |
 | `goal` | после `choice`, если у сценария есть `play` | куда идти на карте: `aisle1` … `aisle8`, `checkout`. Нужен у каждого ответа |
 
-Что умеет `walk`:
+Какие картинки есть и что они понимают:
 
-- `props`:
-  - `dog=wag|growl|calm|chew|stiff`;
-  - `stranger=near|leash` (прохожий подходит; `leash` значит, что у него в руке пустой поводок);
-  - `item=sock|stick|sausage` (что собака жуёт);
-  - `squirrel=road|park`.
-- `show`: `pet`, `bite`, `grab`, `stranger_leaves`, `drop`, `eat`, `sit`, `dog_runs`.
+| `stage` | `props` | `show` |
+|---|---|---|
+| `walk` | `dog=wag\|growl\|calm\|chew\|stiff`, `stranger=near\|leash`, `item=sock\|stick\|sausage`, `squirrel=road\|park` | `pet`, `bite`, `grab`, `stranger_leaves`, `drop`, `eat`, `sit`, `dog_runs` |
+| `bedroom` | `day=sat\|mon` | `snooze`, `get_up`, `knock`, `missed` |
+| `kitchen` | `milk=rising\|cold`, `smell=burnt` | `off`, `boil_over`, `warm`, `air_out`, `mask` |
+| `fridge` | `sausage=fresh\|green` | `eat`, `throw` |
+| `peephole` | `who=courier\|pamphlets\|fog\|band\|mom` | `open`, `leave`, `soup_left` |
+| `doormat` | `letter=wax`, `flyer=tuba` | `accept`, `drawer`, `hedgehog`, `go`, `stay_home` |
+| `phone` | `call=mom\|vet`, `missed=3`, `place=shower`, `chat=karaoke\|newplace` | `answer`, `decline`, `again`, `drop_in_bath`, `pizza`, `anything`, `pay`, `haggle` |
+| `lift` | `neighbor=wave\|tuba` | `hold`, `close` |
+| `crosswalk` | `road=empty\|bus` | `run`, `wait`, `red` |
+| `taxi` | `nav=left\|dead`, `sign=right` | `left`, `right`, `straight` |
+| `entrance` | `neighbor=grin\|grudge` | `thank`, `ignore`, `door_open`, `door_shut` |
+| `desk` | `day=friday\|tuesday`, `boss=door` | `yes`, `busy`, `seen`, `apologize`, `excuse` |
+| `cake` | `cake=olga\|you` | `sing`, `eat`, `mumble` |
+| `coffee` | `tank=empty\|full`, `sticker=kick` | `water`, `kick`, `taken` |
+| `stand` | `note=moved` | — |
+| `deli` | `made=today\|old` | `buy`, `walk_away`, `sold_out` |
+| `checkout` | `bag=none\|yours` | `lift`, `staff`, `queue` |
+| `cashier` | `bag=own`, `apples=14` | `no_bag`, `bag`, `sigh`, `juggle` |
 
 Неизвестное значение просто не рисуется. Терминальная версия картинок не показывает, а карту магазина печатает символами.
 
 Действие `play: store N`: ответ выбирает место (`goal`), потом игрок идёт туда по карте магазина сверху. По проходам катаются тележки. Дошёл вовремя — срабатывает исход ответа. Не успел — срабатывает `timeout`, но очки стиля за ответ остаются.
+
+## Мини-игры
+
+После ответа можно дать игроку что-то сделать руками. Строка `act:` идёт сразу после `choice` (или после её `show`/`effects`/`sets`), строка `fail:` описывает проигрыш. `effects`, `sets` и `show` после `fail:` относятся к проигрышу.
+
+```
+choice: hold | He squeezes in. 'Thanks!' | 1
+show: hold
+act: mash 2.5 14 hold the doors!
+fail: The doors win. They close on his waving hand. | -1
+show: close
+sets: neighbor_snubbed
+```
+
+Формат: `act: вид секунды [число] [подпись]`.
+
+| Вид | Что делать | Число |
+|---|---|---|
+| `mash` | жать любые клавиши, пока полоса не заполнится (она понемногу утекает) | сколько нажатий, по умолчанию 12 |
+| `timing` | стрелка ходит туда-сюда, нажать Space, когда она в зелёной зоне | попыток, по умолчанию 2 |
+| `cross` | перейти дорогу снизу вверх (WASD или стрелки), не попав под велосипед или машину | — |
+| `catch` | ловить падающие яблоки корзиной (A и D) | сколько поймать из 7, по умолчанию 4 |
+| `lyrics` | напечатать строку песни; подпись и есть эта строка (строчные буквы и пробелы) | — |
+
+Выиграл — срабатывает исход ответа. Проиграл — `fail:`, а если его нет, `timeout` варианта. Очки стиля за сам ответ остаются в любом случае. Пока идёт мини-игра, картинка сцены получает `show: act`, и некоторые картинки следят за прогрессом: двери лифта раздвигаются, собака оттягивается назад.
 
 ## Последствия
 

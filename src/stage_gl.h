@@ -11,6 +11,8 @@
 typedef struct {
     Color bg, panel, faint, dim, text, cue, ok, bad, warn, accent;
     float alpha;                // fade of the whole picture
+    Font  font, bold;           // for words in the picture: signs, screens, the cake
+    float act;                  // during a minigame (show "act"): how far along, 0..1
 } StagePal;
 
 // since_scene: seconds since this scene first appeared (things walk in, stop);

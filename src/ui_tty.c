@@ -288,6 +288,7 @@ void ui_ending(const EndingView *v) {
 
 // The terminal can't tell a held key: every press is one step.
 int ui_held(void) { return -1; }
+int ui_presses(void) { return -1; }
 
 // The map in characters: '#' walls and shelves, digits for the aisles' goods,
 // 'K' checkouts, 'i' the info stand, '@' you, 'c' carts. The goal is bold.
@@ -323,6 +324,74 @@ void ui_walk(const WalkView *v) {
         attron(COLOR_PAIR(C_BAD));
         mvprintw(r + 2, 4, "Bump! A cart.");
         attroff(COLOR_PAIR(C_BAD));
+    }
+    refresh();
+}
+
+// Minigames in characters. The first line names it ("ACT: CROSS"), so the tests
+// know what to do; grids print one row per line, '@' is you.
+void ui_minigame(const MinigameView *v) {
+    static const char *const kinds[] = { "MASH", "TIMING", "CROSS", "CATCH", "SING" };
+    erase();
+    draw_status();
+    draw_header(&v->scene);
+    char line[200];
+    snprintf(line, sizeof line, "ACT: %s  %s", kinds[v->kind], v->kind == MG_LYRICS ? "" : v->text);
+    attron(A_BOLD);
+    int r = 3 + print_wrapped(3, 4, line) + 1;
+    attroff(A_BOLD);
+    switch (v->kind) {
+    case MG_MASH: {
+        int bar = 30, full = (int)(bar * v->progress);
+        mvprintw(r, 4, "MASH ANY KEY  [");
+        for (int i = 0; i < bar; i++) addch(i < full ? '#' : '.');
+        printw("]");
+        r += 2;
+        break;
+    }
+    case MG_TIMING: {
+        int w = 40, nx = (int)(v->needle * (w - 1) + 0.5);
+        mvprintw(r, 4, "PRESS SPACE IN THE ZONE   tries: %d", v->tries);
+        move(r + 1, 4);
+        addch('[');
+        for (int i = 0; i < w; i++) {
+            double x = (double)i / (w - 1);
+            addch(i == nx ? '|' : (x >= v->zone_lo && x <= v->zone_hi) ? '=' : '-');
+        }
+        addch(']');
+        r += 3;
+        break;
+    }
+    case MG_CROSS: case MG_CATCH:
+        for (int y = 0; y < v->h; y++) {
+            move(r + y, 4);
+            int side = v->kind == MG_CROSS && (y == 0 || y == v->h - 1);
+            addch(v->kind == MG_CROSS ? (v->lane_dir[y] < 0 ? '<' : v->lane_dir[y] > 0 ? '>' : '|') : '|');
+            for (int x = 0; x < v->w; x++) {
+                char c = v->cells[y][x];
+                if (x == v->px && y == v->py) addch(v->kind == MG_CATCH ? 'U' : '@');
+                else addch(c != '.' ? c : side ? '=' : ' ');
+            }
+            addch('|');
+        }
+        r += v->h + 1;
+        if (v->kind == MG_CATCH) { mvprintw(r, 4, "caught %d of %d", v->caught, v->n); r += 2; }
+        break;
+    case MG_LYRICS:
+        mvprintw(r, 4, "SING: %s", v->text);
+        mvprintw(r + 1, 4, "    > %.*s_", v->typed, v->text);
+        r += 3;
+        break;
+    }
+    int bar_w = 30, filled = (int)(bar_w * (v->left / v->limit));
+    if (filled < 0) filled = 0;
+    mvprintw(r, 4, "[");
+    for (int i = 0; i < bar_w; i++) addch(i < filled ? '#' : ' ');
+    printw("] %.1fs", v->left);
+    if (v->state != MG_GOING) {
+        attron(A_BOLD | COLOR_PAIR(v->state == MG_WON ? C_OK : C_BAD));
+        mvprintw(r + 2, 4, v->state == MG_WON ? "DONE!" : "MISSED!");
+        attroff(A_BOLD | COLOR_PAIR(v->state == MG_WON ? C_OK : C_BAD));
     }
     refresh();
 }

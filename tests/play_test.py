@@ -83,7 +83,9 @@ def parse_pack(path, lex):
     def var():
         return cur["variants"][-1] if cur["variants"] else newvar()
     def outcome(v):
-        return (v["tsets"], v["tfx"]) if v["last"] == "timeout" else (v["choices"][-1]["sets"], v["choices"][-1]["fx"])
+        if v["last"] == "timeout": return (v["tsets"], v["tfx"])
+        if v["last"] == "fail": return (v["choices"][-1]["fsets"], v["choices"][-1]["ffx"])
+        return (v["choices"][-1]["sets"], v["choices"][-1]["fx"])
     for k, v in kv_lines(path):
         if k == "pack": pk["name"] = v
         elif k == "verdicts": pk["verdicts"] = [norm_ws(x) for x in v.split("|")]
@@ -114,6 +116,14 @@ def parse_pack(path, lex):
         elif k == "variant": newvar(norm_ws(v) or None)
         elif k == "on_timeout": var()["mode"] = v
         elif k == "play": cur["play"] = v
+        elif k == "act":
+            bits = v.split(" ", 2); n = None; text = bits[2] if len(bits) > 2 else ""
+            if text.split(" ")[0].isdigit(): n = int(text.split(" ")[0]); text = text.split(" ", 1)[1] if " " in text else ""
+            var()["choices"][-1]["act"] = dict(kind=bits[0], secs=float(bits[1]), n=n, text=text)
+        elif k == "fail":
+            p = [x.strip() for x in v.split("|")]
+            c = var()["choices"][-1]; c["fail"] = (norm_ws(p[0]), int(p[1]) if len(p) > 1 else 0); c["fsets"] = []; c["ffx"] = []
+            var()["last"] = "fail"
         elif k == "goal": var()["choices"][-1]["goal"] = v[-1] if v.startswith("aisle") else "k"
         elif k in ("stage", "props", "show"): pass
         elif k == "weight": var()
@@ -217,7 +227,7 @@ class Game:
         self.pid, self.fd = pty.fork()
         if self.pid == 0:
             fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
-            os.chdir(PROJ); os.environ.update(TERM="xterm", HOME=home, TYPED_STORIES_DATE=date)
+            os.chdir(PROJ); os.environ.update(TERM="xterm-color", HOME=home, TYPED_STORIES_DATE=date)
             for k in ("XDG_DATA_HOME", "LINES", "COLUMNS"): os.environ.pop(k, None)
             os.execv(os.path.join(PROJ, "game-tty"), ["./game-tty", PACKS])
         self.pump(0.5)
@@ -248,6 +258,7 @@ def block(L, i):
 # ------------------------------------------------------------------ one run
 
 def play_run(g, world, packfile, key, strategy, today=False, log=False):
+    strategy_fn = strategy
     lex = parse_lex(f"{PACKS}/lexicon.lex"); pk = parse_pack(f"{PACKS}/{packfile}", lex)
     words = parse_words(f"{PACKS}/words.lst")
     probs = []
@@ -306,6 +317,7 @@ def play_run(g, world, packfile, key, strategy, today=False, log=False):
 
     i = 0
     finale_seen = None
+    games = []          # (scene number, won) for every minigame played
     while True:
         L = g.lines(); T = g.text()
         if "RUN COMPLETE" in T or "DAY OVER EARLY" in T: break
@@ -342,7 +354,7 @@ def play_run(g, world, packfile, key, strategy, today=False, log=False):
         if sc["needs"]: chk(holds(sc["needs"], snap if pk["phases"] else flags), f"#{i}: unlocked {sc['title'][:30]!r} without its flags")
         chk(v in open_variants(sc, flags), f"#{i}: variant {v['detail']!r} shown, flags {sorted(flags)}")
         played += 1; st["n"] += 1
-        ms = [c["mark"] for c in v["choices"]] + ([v["timeout"][1]] if v["mode"] == "text" else [])
+        ms = [c["mark"] for c in v["choices"]] + ([v["timeout"][1]] if v["mode"] == "text" else []) + [c["fail"][1] for c in v["choices"] if c.get("fail")]
         st["best"] += max(ms); st["worst"] += min(ms)
         g.send(b"\n"); g.pump(0.35)
         L = g.lines()
@@ -411,9 +423,20 @@ def play_run(g, world, packfile, key, strategy, today=False, log=False):
         else:
             g.send(typed.encode()); st["typed"] += len(typed)
         g.pump(0.1)
-        inp_line = next((l for l in g.lines() if l.startswith("    > ")), "")
+        for _ in range(10):         # let the screen catch up with the typing
+            inp_line = next((l for l in g.lines() if l.startswith("    > ")), "")
+            if inp_line.strip() == "> " + typed + "_": break
+            g.pump(0.05)
         chk(inp_line.strip() == "> " + typed + "_", f"{tag}: input line {inp_line!r}")
         g.send(b"\n"); g.pump(0.45)
+        won = True
+        if "ACT: " in g.text():             # a minigame: win it, or lose it on purpose
+            chk(c.get("act") is not None, f"{tag}: a minigame after a choice without 'act:'")
+            won = minigame(g, c["act"], lose=getattr(strategy_fn, "lose_games", False))
+            games.append((len(seen) - 1, won))
+            if log: print(f"{tag} minigame {c['act']['kind']}: {'won' if won else 'lost'}")
+            g.pump(1.3)
+        elif c.get("act"): probs.append(f"{tag}: no minigame screen after an 'act:' choice"); break
         if "GET TO" in g.text():            # an activity: walk to the spot the answer named
             chk(sc.get("play") is not None, f"{tag}: a walk in a scene without 'play:'")
             if not walk(g, c.get("goal")): probs.append(f"{tag}: could not walk to {c.get('goal')!r}"); break
@@ -425,13 +448,20 @@ def play_run(g, world, packfile, key, strategy, today=False, log=False):
         before = world.heat.get(phrase, 0.0); pts = style_pts(tier, typo, before); world.heat[phrase] = before + 1.0
         bonus = 100 if used and not word_used else 0
         if bonus: word_used = True; world.word_days.add(DATE if not hasattr(g, "date") else g.date)
-        st["style"] += pts + bonus; st["marks"] += c["mark"]
-        fxs = apply(c["fx"], c["sets"])
+        if won:
+            st["style"] += pts + bonus; st["marks"] += c["mark"]
+            fxs = apply(c["fx"], c["sets"]); result = c["result"]
+        else:       # the choice's 'fail:' happens, or the timeout if it has none
+            st["style"] += pts + bonus
+            if c.get("fail"):
+                st["marks"] += c["fail"][1]; fxs = apply(c["ffx"], c["fsets"]); result = c["fail"][0]
+            else:
+                st["marks"] += v["timeout"][1]; fxs = apply(v["tfx"], v["tsets"]); result = v["timeout"][0]
         q = next((j for j, l in enumerate(L) if l.strip() == f'"{typed}"'), None)
         sl = next((j for j, l in enumerate(L) if re.match(r"\s*style [SABCD] \+\d+", l)), None)
         if q is None or sl is None: probs.append(f"{tag}: result screen broken {g.text()[:150]!r}"); break
         body = norm_ws(" ".join(l.strip() for l in L[q + 1:sl] if l.strip()))
-        exp_body = norm_ws(c["result"] + " " + fxs)
+        exp_body = norm_ws(result + " " + fxs)
         note = block(L, sl)[0]
         sm = re.match(r"style ([SABCD]) \+(\d+)(\s+\(typo\))?(\s+\(heard that before\))?(\s+WORD OF THE DAY \+100)?(\s+\(word already used today\))?\s+\d+\.\ds$", note)
         got = (sm.group(1), int(sm.group(2)), bool(sm.group(3)), bool(sm.group(4)), bool(sm.group(5)), bool(sm.group(6))) if sm else None
@@ -480,7 +510,75 @@ def play_run(g, world, packfile, key, strategy, today=False, log=False):
         chk(f"Today: best {world.day[(DATE, pk['name'])]}" in T, "today line")
     g.send(b" "); g.pump(0.4)
     chk("choose who you are today" in g.text(), "did not return to the menu")
-    return probs, dict(seen=seen, rating=rating, score=score, ended=ended, avg=avg, flags=flags, finale=finale_seen)
+    return probs, dict(seen=seen, rating=rating, score=score, ended=ended, avg=avg, flags=flags, finale=finale_seen, games=games)
+
+def minigame(g, act, lose=False):
+    """Plays the minigame on screen and returns whether it was won. With lose,
+    it waits for the time to run out instead."""
+    kind = act["kind"]
+    if lose:
+        for _ in range(400):
+            if "MISSED!" in g.text() or "ACT: " not in g.text(): return False
+            g.pump(0.05)
+        return False
+    def done():
+        T = g.text()
+        return "DONE!" in T or "MISSED!" in T or "ACT: " not in T
+    if kind == "mash":
+        g.send(b" " * (act["n"] or 12) + b"    ", gap=0.01)
+    elif kind == "lyrics":
+        line = next(l for l in g.lines() if l.strip().startswith("SING: "))
+        g.send(line.strip()[6:].encode(), gap=0.02)
+    elif kind == "timing":
+        prev = None
+        for _ in range(600):
+            if done(): break
+            L = g.lines()
+            tr = next((m.group(1) for l in L for m in [re.match(r"\s*\[([-=|]{20,})\]\s*$", l)] if m and "|" in m.group(1)), None)
+            if tr:
+                nx = tr.index("|"); lo = tr.find("="); hi = tr.rfind("=")
+                if lo < 0: lo = hi = nx          # the needle covers the whole zone
+                lo = min(lo, nx) if tr[nx - 1:nx] == "=" or tr[nx + 1:nx + 2] == "=" else lo
+                hi = max(hi, nx) if tr[nx - 1:nx] == "=" or tr[nx + 1:nx + 2] == "=" else hi
+                d = 0 if prev is None else (1 if nx > prev else -1 if nx < prev else 0)
+                # press inside the zone, with room before the needle leaves it
+                if (d > 0 and lo <= nx <= hi - 2) or (d < 0 and lo + 2 <= nx <= hi):
+                    g.send(b" "); g.pump(0.15); prev = None; continue
+                prev = nx
+            g.pump(0.008)
+    elif kind in ("cross", "catch"):
+        for _ in range(1500):
+            if done(): break
+            L = g.lines()
+            rows = [l[4:] for l in L if l[4:5] in "<>|" and l.rstrip().endswith("|") and len(l.rstrip()) > 8]
+            if kind == "cross":
+                me = next(((x, y) for y, r in enumerate(rows) for x, ch in enumerate(r) if ch == "@"), None)
+                if not me: g.pump(0.02); continue
+                x, y = me; W = len(rows[0]) - 2
+                def lane_safe(yy, reach):
+                    r = rows[yy]; d = {"<": -1, ">": 1}.get(r[0], 0)
+                    if d == 0: return True
+                    cells = r[1:-1]
+                    for k in range(0, reach + 1):
+                        if cells[(x - 1 - d * k) % W] in "bc": return False
+                    return True
+                if lane_safe(y - 1, 3): g.send(b"w"); g.pump(0.05); continue
+                if not lane_safe(y, 1) and lane_safe(y + 1, 2): g.send(b"s"); g.pump(0.05); continue
+                g.pump(0.02)
+            else:
+                me = next(((x, y) for y, r in enumerate(rows) for x, ch in enumerate(r) if ch == "U"), None)
+                apples = [(y, x) for y, r in enumerate(rows) for x, ch in enumerate(r) if ch == "o"]
+                if not me or not apples: g.pump(0.02); continue
+                ty, tx = max(apples)
+                if tx > me[0]: g.send(b"d")
+                elif tx < me[0]: g.send(b"a")
+                g.pump(0.03)
+    for _ in range(100):
+        T = g.text()
+        if "DONE!" in T: return True
+        if "MISSED!" in T or "ACT: " not in T: return False
+        g.pump(0.03)
+    return False
 
 def walk(g, goal):
     """Walks the terminal map to the goal: a fresh shortest path around shelves
@@ -523,6 +621,7 @@ def strategy(kind):
             t = marks.index(min(marks))
             if tm is not None and tm < min(marks): return None, "timeout"
         return t, tech
+    fn.lose_games = kind.startswith("worst")
     return fn
 
 # ------------------------------------------------------------------ files on disk
@@ -574,10 +673,11 @@ def main(mode, home):
         g.quit(); allp += check_files(home, w)
     elif mode == "decay":
         w = World(); g = Game(home); avgs = []
-        for day in (1, 2): avgs.append(run(g, w, "02-knight.txt", "2", "best-fancy", f"knight day {day}")["avg"])
+        # Today mode: the same scenes every day, so only the wear on the phrases changes
+        for day in (1, 2): avgs.append(run(g, w, "02-knight.txt", "2", "best-fancy", f"knight day {day}", today=True)["avg"])
         g.quit()
         w.heat = {k: round(v, 4) for k, v in load_heat(home).items()}
-        g = Game(home); avgs.append(run(g, w, "02-knight.txt", "2", "best-fancy", "knight day 3 (after restart)")["avg"]); g.quit()
+        g = Game(home); avgs.append(run(g, w, "02-knight.txt", "2", "best-fancy", "knight day 3 (after restart)", today=True)["avg"]); g.quit()
         print(f"  style avg per day: {avgs}")
         if not avgs[0] > avgs[1] > avgs[2]: allp.append(f"style did not decay: {avgs}")
         allp += check_files(home, w)
@@ -601,17 +701,21 @@ def main(mode, home):
         print(f"  unlocked scenes seen {len(unlocked & allu)}/{len(allu)}, conditional variants {len(conds & allc)}/{len(allc)}, early endings: {endings or 'none'}")
         allp += check_files(home, w)
     elif mode == "today":
-        days = []
+        days, plays = [], []
         for n in range(2):
             h = os.path.join(home, f"player{n}"); os.makedirs(h)
             w = World(); g = Game(h)
-            days.append(run(g, w, "01-ordinary.txt", "1", "best-fancy", f"player {n + 1}, today", today=True)["seen"])
+            info = run(g, w, "01-ordinary.txt", "1", "best-fancy", f"player {n + 1}, today", today=True)
+            days.append(info["seen"]); plays.append(info["games"])
             g.quit()
-        if days[0] != days[1]: allp.append(f"two players got different days:\n{days[0]}\n{days[1]}")
+        # the same day for both, as long as they play the same: a minigame one of
+        # them lost changes what comes after it, as it should
+        cut = min([a[0] + 1 for a, b in zip(*plays) if a != b] + [len(days[0]), len(days[1])])
+        if days[0][:cut] != days[1][:cut]: allp.append(f"two players got different days:\n{days[0]}\n{days[1]}")
         h = os.path.join(home, "other_date"); os.makedirs(h)
         g = Game(h, date="2026-12-01"); w = World()
         other = run(g, w, "01-ordinary.txt", "1", "best-fancy", "another date, today", today=True)["seen"]; g.quit()
-        print(f"  same date, same day: {days[0] == days[1]}; another date differs: {other != days[0]}")
+        print(f"  same date, same day: {days[0][:cut] == days[1][:cut]} (compared {cut} scenes, up to the first minigame they played differently); another date differs: {other != days[0]}")
         if other == days[0]: allp.append("another date gave the very same day")
         free = []
         for n in range(2):

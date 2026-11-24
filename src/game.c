@@ -5,6 +5,7 @@
 
 #include "game.h"
 #include "activity.h"
+#include "minigame.h"
 #include "daily.h"
 #include "day.h"
 #include "match.h"
@@ -161,6 +162,88 @@ static int walk_to(const Event *e, const Choice *c, const char *answer, const Sc
     }
 }
 
+// A minigame after the answer ('act:'). Returns 1 if it was won.
+static int play_minigame(const Event *e, const Choice *c, const Scene *scene) {
+    Rng r = e->fate;
+    Minigame g;
+    double t0 = now();
+    mg_start(&g, c->act - 1, c->act_time, c->act_n, c->act_text, &r, t0);
+    MinigameView v;
+    memset(&v, 0, sizeof v);
+    v.scene = *scene;
+    v.kind = g.kind;
+    v.text = g.text;
+    v.n = g.n;
+    v.limit = g.limit;
+    v.zone_lo = g.zone_lo;
+    v.zone_hi = g.zone_hi;
+    ui_flush();
+    ui_presses();
+    int last_dx = 0;
+    while (1) {
+        double t = now();
+        mg_tick(&g, t);
+        v.state = g.state;
+        v.progress = mg_progress(&g, t);
+        v.needle = mg_needle(&g, t);
+        v.tries = g.tries;
+        v.typed = g.typed;
+        v.missed_ago = t - g.missed_at;
+        v.wrong_ago = t - g.wrong_at;
+        v.ended_ago = g.state == MG_GOING ? 0 : t - g.ended_at;
+        v.moved_ago = t - g.moved_at;
+        v.w = g.w; v.h = g.h; v.px = g.px; v.py = g.py; v.ppx = g.ppx; v.ppy = g.ppy;
+        for (int y = 0; y < g.h; y++) {
+            for (int x = 0; x < g.w; x++) v.cells[y][x] = mg_cell(&g, x, y);
+            v.cells[y][g.w] = '\0';
+            v.lane_dir[y] = g.kind == MG_CROSS ? g.lanes[y].dir : 0;
+            v.lane_step[y] = g.lanes[y].step;
+            v.lane_next[y] = g.lanes[y].next - t;
+        }
+        v.caught = g.caught;
+        v.missed = g.missed;
+        double left = g.limit - (t - g.start);
+        v.left = g.state != MG_GOING ? g.limit - (g.ended_at - g.start) : left > 0 ? left : 0;
+        ui_minigame(&v);
+        if (g.state != MG_GOING && t - g.ended_at > 0.9) return g.state == MG_WON;
+
+        int ch = ui_key(16);
+        t = now();
+        if (g.state != MG_GOING || ch == K_NONE) {
+            if (ch == K_NONE && (g.kind == MG_CROSS || g.kind == MG_CATCH)) goto held;
+            continue;
+        }
+        if (g.kind == MG_MASH) {                // a held key does not count, only presses
+            int n = ui_presses();
+            if (n < 0) mg_press(&g, ' ', t);
+            else while (n-- > 0) mg_press(&g, ' ', t);
+            continue;
+        }
+        if (g.kind == MG_TIMING) { if (ch == ' ' || ch == K_ENTER) mg_press(&g, ' ', t); continue; }
+        if (g.kind == MG_LYRICS) { if (ch >= 32 && ch <= 126) mg_press(&g, ch, t); continue; }
+        {
+            int dx = 0, dy = 0;
+            switch (ch) {
+            case 'w': case 'W': case K_UP:    dy = -1; break;
+            case 's': case 'S': case K_DOWN:  dy = 1;  break;
+            case 'a': case 'A': case K_LEFT:  dx = -1; break;
+            case 'd': case 'D': case K_RIGHT: dx = 1;  break;
+            default: break;
+            }
+            if (ui_held() < 0) { if (dx || dy) mg_move(&g, dx, dy, t); continue; }
+            if ((dx || dy) && t >= g.next_step) { mg_move(&g, dx, dy, t); last_dx = dx != 0; continue; }
+        }
+    held: {
+            int held = ui_held();
+            if (held <= 0 || t < g.next_step) continue;
+            int hx = !!(held & DIR_RIGHT) - !!(held & DIR_LEFT);
+            int hy = !!(held & DIR_DOWN) - !!(held & DIR_UP);
+            if (hx && hy) { if (last_dx) hx = 0; else hy = 0; }
+            if (hx || hy) { mg_move(&g, hx, hy, t); last_dx = hx != 0; }
+        }
+    }
+}
+
 static int play_event(Run *run, Event *e, int idx, int total) {
     const Scenario *s = e->s;
     const Variant  *v = e->v;
@@ -275,6 +358,27 @@ static int play_event(Run *run, Event *e, int idx, int total) {
             record_word_day(run->date.iso);
         }
         st->style += pts + bonus;
+
+        // a minigame after the answer: lose it, and the choice's 'fail:' happens
+        if (c->act && !play_minigame(e, c, &pv.scene)) {
+            int has = c->has_fail;
+            apply_sets(&run->flags, has ? &c->fail_sets : &v->timeout_sets);
+            apply_effects(run, has ? &c->fail_fx : &v->timeout_fx, &out.fx);
+            update_hud(run);
+            out.typed = input;
+            out.text = has ? c->fail_text : v->timeout_text;
+            out.scene.show = has ? c->fail_show : v->timeout_show;
+            out.rank = style_rank(pts);
+            out.points = pts;
+            out.typo = m.typo;
+            out.repeated = before >= 0.5;
+            out.word_bonus = bonus != 0;
+            out.word_again = m.word && !bonus;
+            out.seconds = elapsed;
+            ui_outcome(&out);
+            wait_key();
+            return has ? c->fail_mark : v->timeout_mark;
+        }
 
         // an activity scene: the answer only says where to go; now get there
         if (s->play >= 0 && !walk_to(e, c, input, &pv.scene)) {

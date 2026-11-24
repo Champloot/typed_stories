@@ -195,7 +195,7 @@ static void upcase(char *dst, size_t cap, const char *src) {
 /* The game hands over views whose strings may change or go away after the
    call, but the window redraws every frame, so everything is copied here. */
 
-enum { S_NONE, S_MENU, S_DAY, S_INTRO, S_PROMPT, S_WALK, S_OUTCOME, S_ENDING, S_FINALE, S_SUMMARY };
+enum { S_NONE, S_MENU, S_DAY, S_INTRO, S_PROMPT, S_WALK, S_MINI, S_OUTCOME, S_ENDING, S_FINALE, S_SUMMARY };
 
 static int    screen = S_NONE;
 static double screen_since;     // for the fade-in
@@ -215,6 +215,7 @@ static union {
     FinaleView   finale;
     SummaryView  sum;
     WalkView     walk;
+    MinigameView mini;
 } view;
 
 static Hud    hud;
@@ -346,6 +347,22 @@ void ui_walk(const WalkView *v) {
     keep_scene(&view.walk.scene);
     view.walk.answer = keep(v->answer);
     view.walk.goal_name = keep(v->goal_name);
+}
+
+void ui_minigame(const MinigameView *v) {
+    set_screen(S_MINI, v->scene.idx);
+    view.mini = *v;
+    view.mini.scene.show = "act";
+    keep_scene(&view.mini.scene);
+    view.mini.text = keep(v->text);
+}
+
+static int presses;             // key downs, without the repeats of a held key
+
+int ui_presses(void) {
+    int n = presses;
+    presses = 0;
+    return n;
 }
 
 // Walking keys go by the key's place on the keyboard, so WASD works in any layout.
@@ -685,8 +702,10 @@ static float drop_cap(char ch, float x, float y) {
 }
 
 // Title and cue; returns the y below them.
+static float stage_act;         // a minigame's progress, for the picture above it
+
 static void draw_stage(const Scene *s, Rectangle box) {
-    StagePal p = { C_BG, C_PANEL, C_FAINT, C_DIM, C_TEXT, C_CUE, C_OK, C_BAD, C_WARN, C_ACCENT, alpha };
+    StagePal p = { C_BG, C_PANEL, C_FAINT, C_DIM, C_TEXT, C_CUE, C_OK, C_BAD, C_WARN, C_ACCENT, alpha, font, bold, stage_act };
     double t = now();
     stage_draw(s->stage, s->props, s->show, box, t - stage_since, s->show ? t - show_since : 0, &p);
 }
@@ -1164,6 +1183,167 @@ static void draw_walk(void) {
     if (v->bumped) text(bold, "Bump! A cart.", L, ty + u * 0.8f, u * 0.8f, C_BAD);
 }
 
+/* ---------- minigames ---------- */
+
+static void time_bar(float y, double left, double limit) {
+    float frac = (float)(left / limit);
+    if (frac < 0) frac = 0;
+    Color tc = frac < 0.3f ? C_BAD : frac < 0.6f ? C_WARN : C_OK;
+    char secs[32];
+    snprintf(secs, sizeof secs, "%.1fs", left);
+    float sw = text_w(font, secs, u * 0.62f) + u * 0.6f;
+    DrawRectangleRounded((Rectangle){ L, y, W - sw, u * 0.28f }, 1, 6, col(C_FAINT));
+    DrawRectangleRounded((Rectangle){ L, y, (W - sw) * frac, u * 0.28f }, 1, 6, col(tc));
+    text(font, secs, L + W - sw + u * 0.6f, y - u * 0.2f, u * 0.62f, tc);
+}
+
+// A road from above, or an apple tree: one grid, cells of size cs.
+static void draw_grid(const MinigameView *v, float top, float avail) {
+    double t = now();
+    float cs = W / v->w;
+    if (cs > avail / v->h) cs = avail / v->h;
+    float mx = L + (W - cs * v->w) / 2, my = top;
+    Rectangle area = { mx, my, cs * v->w, cs * v->h };
+    BeginScissorMode((int)area.x, (int)area.y, (int)area.width, (int)area.height);
+    if (v->kind == MG_CROSS) {
+        DrawRectangleRec(area, col(C_BG));
+        for (int y = 0; y < v->h; y++) {
+            Rectangle row = { mx, my + y * cs, area.width, cs };
+            if (!v->lane_dir[y]) {      // sidewalks
+                DrawRectangleRec(row, col(C_FAINT));
+                for (float x = mx; x < mx + area.width; x += cs) DrawLineEx((Vector2){ x, row.y }, (Vector2){ x, row.y + cs }, 1, col(C_PANEL));
+                continue;
+            }
+            for (float x = mx; x < mx + area.width; x += cs * 1.5f)
+                DrawRectangle((int)x, (int)(row.y + row.height - 2), (int)(cs * 0.7f), 2, col(ColorAlpha(C_DIM, 0.5f)));
+            // traffic slides between cells; the lane shifts when 'next' comes
+            float f = 1 - (float)(v->lane_next[y] / v->lane_step[y]);
+            if (f < 0) f = 0;
+            if (f > 1) f = 1;
+            float off = f * v->lane_dir[y] * cs;
+            for (int rep = -1; rep <= 1; rep++)
+                for (int x = 0; x < v->w; x++) {
+                    char c = v->cells[y][x];
+                    float cx = mx + (x + rep * v->w) * cs + off;
+                    if (c == 'c') {
+                        int head = v->cells[y][(x + 1) % v->w] == 'c' && v->cells[y][(x + v->w - 1) % v->w] != 'c';
+                        if (!head) continue;        // a car is two cells: draw it once, from its left half
+                        Color cc = (y % 3 == 0) ? C_BAD : (y % 3 == 1) ? C_ACCENT : C_WARN;
+                        DrawRectangleRounded((Rectangle){ cx + cs * 0.08f, row.y + cs * 0.15f, cs * 1.84f, cs * 0.7f }, 0.4f, 6, col(cc));
+                        DrawRectangle((int)(cx + cs * (v->lane_dir[y] > 0 ? 1.2f : 0.4f)), (int)(row.y + cs * 0.25f), (int)(cs * 0.4f), (int)(cs * 0.5f), col(ColorAlpha(C_BG, 0.6f)));
+                    } else if (c == 'b') {
+                        DrawRing((Vector2){ cx + cs * 0.28f, row.y + cs * 0.6f }, cs * 0.12f, cs * 0.2f, 0, 360, 16, col(C_OK));
+                        DrawRing((Vector2){ cx + cs * 0.72f, row.y + cs * 0.6f }, cs * 0.12f, cs * 0.2f, 0, 360, 16, col(C_OK));
+                        DrawCircleV((Vector2){ cx + cs * 0.5f, row.y + cs * 0.28f }, cs * 0.16f, col(C_CUE));
+                    }
+                }
+        }
+    } else {                            // catch: a tree above, apples falling
+        DrawRectangleRec(area, col(C_PANEL));
+        DrawCircleV((Vector2){ mx + area.width / 2, my - cs * 0.5f }, area.width * 0.45f, col(ColorAlpha(C_OK, 0.25f)));
+        for (int y = 0; y < v->h; y++)
+            for (int x = 0; x < v->w; x++)
+                if (v->cells[y][x] == 'o') {
+                    Vector2 c = { mx + (x + 0.5f) * cs, my + (y + 0.5f) * cs };
+                    DrawCircleV(c, cs * 0.3f, col(C_BAD));
+                    DrawLineEx((Vector2){ c.x, c.y - cs * 0.3f }, (Vector2){ c.x + cs * 0.08f, c.y - cs * 0.45f }, 2, col(C_OK));
+                }
+    }
+    // you: a dot crossing the road, or a basket
+    float f = (float)(v->moved_ago / MG_STEP_S);
+    if (f > 1) f = 1;
+    if (f < 0) f = 0;
+    float px = mx + (v->ppx + (v->px - v->ppx) * f + 0.5f) * cs, py = my + (v->ppy + (v->py - v->ppy) * f + 0.5f) * cs;
+    if (v->kind == MG_CROSS) {
+        DrawCircleV((Vector2){ px, py }, cs * 0.34f, col(C_ACCENT));
+        DrawCircleV((Vector2){ px, py }, cs * 0.14f, col(C_PANEL));
+        if (v->state == MG_LOST)
+            for (int i = 0; i < 8; i++) {
+                float a = i * 45 * DEG2RAD;
+                DrawLineEx((Vector2){ px + cosf(a) * cs * 0.45f, py + sinf(a) * cs * 0.45f }, (Vector2){ px + cosf(a) * cs * 0.8f, py + sinf(a) * cs * 0.8f }, 3, col(C_BAD));
+            }
+    } else {
+        DrawRectangleRounded((Rectangle){ px - cs * 0.48f, py - cs * 0.1f, cs * 0.96f, cs * 0.55f }, 0.5f, 6, col((Color){ 150, 110, 70, 255 }));
+        DrawRing((Vector2){ px, py - cs * 0.1f }, cs * 0.3f, cs * 0.36f, 180, 360, 16, col((Color){ 150, 110, 70, 255 }));
+    }
+    EndScissorMode();
+    (void)t;
+}
+
+static void draw_mini(void) {
+    const MinigameView *v = &view.mini;
+    double t = now();
+    static const char *const how[] = {
+        "mash any key!", "press Space when the needle is in the green", "W A S D: get across", "A D: catch them", "type the words",
+    };
+    draw_header(&v->scene);
+    float y;
+    if (v->kind == MG_CROSS || v->kind == MG_CATCH) {
+        y = u * 3.9f;
+        text(bold, v->text, L, y, u * 0.95f, C_WARN);
+        text(font, how[v->kind], L + W - text_w(font, how[v->kind], u * 0.65f), y + u * 0.25f, u * 0.65f, C_DIM);
+        draw_grid(v, u * 5.6f, u * 17.0f);
+        y = u * 23.6f;
+        if (v->kind == MG_CATCH) {
+            char c[48];
+            snprintf(c, sizeof c, "caught %d of %d", v->caught, v->n);
+            text(bold, c, L, y - u * 1.2f, u * 0.8f, C_TEXT);
+        }
+    } else {
+        float a = alpha;
+        alpha = 1;
+        stage_act = (float)v->progress;
+        if (v->scene.stage) draw_stage(&v->scene, (Rectangle){ L, u * 3.6f, W, u * 10.6f });
+        stage_act = 0;
+        alpha = a;
+        y = u * (v->scene.stage ? 15.0f : 5.0f);
+        if (v->kind != MG_LYRICS) text(bold, v->text, L, y, u * 1.0f, C_WARN);
+        text(font, how[v->kind], L + W - text_w(font, how[v->kind], u * 0.65f), y + u * 0.25f, u * 0.65f, C_DIM);
+        y += u * 1.9f;
+        if (v->kind == MG_MASH) {           // a key that throbs, a bar that leaks
+            float pulse = 1 + 0.06f * (float)sin(t * 22);
+            float kw = u * 6 * pulse, kh = u * 2.2f * pulse;
+            Rectangle key = { L, y, kw, kh };
+            DrawRectangleRounded(key, 0.3f, 8, col(C_PANEL));
+            DrawRectangleRoundedLinesEx(key, 0.3f, 8, 3, col(C_ACCENT));
+            text(bold, "ANY KEY", key.x + (kw - text_w(bold, "ANY KEY", u * 0.9f)) / 2, key.y + (kh - u * 0.9f) / 2, u * 0.9f, C_ACCENT);
+            Rectangle bar = { L + u * 7, y + u * 0.6f, W - u * 7, u * 1.0f };
+            DrawRectangleRounded(bar, 0.5f, 8, col(C_FAINT));
+            DrawRectangleRounded((Rectangle){ bar.x, bar.y, bar.width * (float)v->progress, bar.height }, 0.5f, 8, col(v->progress > 0.7 ? C_OK : C_WARN));
+            y += u * 3.2f;
+        } else if (v->kind == MG_TIMING) {  // a needle swings over a track
+            Rectangle tr = { L, y + u * 0.6f, W, u * 1.4f };
+            float shake = v->missed_ago < 0.3 ? (float)sin(v->missed_ago * 80) * u * 0.3f : 0;
+            tr.x += shake;
+            DrawRectangleRounded(tr, 0.4f, 8, col(C_PANEL));
+            DrawRectangleRec((Rectangle){ tr.x + tr.width * (float)v->zone_lo, tr.y, tr.width * (float)(v->zone_hi - v->zone_lo), tr.height }, col(ColorAlpha(C_OK, 0.6f)));
+            float nx = tr.x + tr.width * (float)v->needle;
+            DrawRectangle((int)(nx - u * 0.08f), (int)(tr.y - u * 0.4f), (int)(u * 0.16f), (int)(tr.height + u * 0.8f), col(v->missed_ago < 0.3 ? C_BAD : C_TEXT));
+            DrawPoly((Vector2){ nx, tr.y - u * 0.6f }, 3, u * 0.3f, 90, col(C_TEXT));
+            for (int i = 0; i < v->n; i++)
+                DrawCircleV((Vector2){ L + W - u * 0.4f - i * u * 0.9f, y - u * 0.1f }, u * 0.25f, col(i < v->tries ? C_WARN : C_FAINT));
+            y += u * 3.0f;
+        } else {                            // the words to sing
+            float size = u * 1.4f, shake = v->wrong_ago < 0.25 ? (float)sin(v->wrong_ago * 90) * u * 0.25f : 0;
+            char done[MG_TEXT];
+            snprintf(done, sizeof done, "%.*s", v->typed, v->text);
+            float tw = text_w(bold, v->text, size), x0 = L + (W - tw) / 2 + shake;
+            text(bold, v->text, x0, y, size, C_DIM);
+            text(bold, done, x0, y, size, C_OK);
+            float cx = x0 + text_w(bold, done, size);
+            if (v->text[v->typed])
+                DrawRectangle((int)cx, (int)(y + size * 1.15f), (int)(size * 0.55f), (int)(u * 0.12f), col(v->wrong_ago < 0.25 ? C_BAD : C_WARN));
+            y += u * 2.8f;
+        }
+    }
+    time_bar(y, v->left, v->limit);
+    if (v->state != MG_GOING) {
+        const char *s = v->state == MG_WON ? "DONE!" : "MISSED!";
+        float size = u * 2.2f * (1 + 0.3f * (float)(1 - fmin(1, v->ended_ago / 0.25)));
+        text(bold, s, L + (W - text_w(bold, s, size)) / 2, y + u * 0.9f, size, v->state == MG_WON ? C_OK : C_BAD);
+    }
+}
+
 static void draw_screen(void) {
     // the terminal types things out, except where the player is racing the clock
     reveal = -1;
@@ -1172,7 +1352,7 @@ static void draw_screen(void) {
 
     // shapes in the background, except where a picture is the background's job
     int pictured = (screen == S_INTRO && view.intro.stage) || (screen == S_PROMPT && view.prompt.scene.stage) ||
-                   (screen == S_OUTCOME && view.out.scene.stage) || screen == S_WALK;
+                   (screen == S_OUTCOME && view.out.scene.stage) || screen == S_WALK || screen == S_MINI;
     if (th_id == TH_ABSTRACT && screen != S_MENU && screen != S_FINALE && !pictured) abstract_backdrop(mood_key);
     if (th_id == TH_ABSTRACT && screen == S_FINALE) abstract_finale(view.finale.good, view.finale.special);
     if (th_id == TH_ORNATE) ornate_backdrop();
@@ -1196,6 +1376,7 @@ static void draw_screen(void) {
     case S_FINALE:  draw_finale();  break;
     case S_SUMMARY: draw_summary(); break;
     case S_WALK:    draw_walk();    break;
+    case S_MINI:    draw_mini();    break;
     default: break;
     }
     reveal = -1;
@@ -1264,6 +1445,7 @@ static void poll_keys(void) {
     while ((c = GetCharPressed()) > 0)
         if (!ctrl && c >= 32 && c <= 126) push(c);
     while ((k = GetKeyPressed()) > 0) {
+        if (!(k >= KEY_LEFT_SHIFT && k <= KEY_KB_MENU)) presses++;
         if (k == KEY_ENTER || k == KEY_KP_ENTER) { if (alt) toggle_fullscreen(); else push(K_ENTER); }
         else if (k == KEY_F11) toggle_fullscreen();
         else if (k == KEY_BACKSPACE) push(ctrl ? K_CTRL_W : K_BACKSPACE);

@@ -86,6 +86,16 @@ typedef struct {
     Effects fx;     // how the meters move if this happens
     char   *show;   // how the picture reacts ('show:'), NULL if it just stays
     char    goal;   // activity scenes: the spot to walk to (its map cell), 0 otherwise
+    int     act;    // a minigame after the answer ('act:'): MG_* + 1, 0 for none
+    double  act_time;
+    int     act_n;
+    char   *act_text;
+    int     has_fail;       // 'fail:' given: what happens if the minigame is lost
+    char   *fail_text;
+    int     fail_mark;
+    FlagSet fail_sets;
+    Effects fail_fx;
+    char   *fail_show;
 } Choice;
 
 /* One hidden version of a scenario. The player sees its detail (the cue)

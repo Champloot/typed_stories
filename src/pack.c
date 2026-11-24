@@ -6,6 +6,7 @@
 
 #include "pack.h"
 #include "activity.h"
+#include "minigame.h"
 #include "lexicon.h"
 #include "util.h"
 
@@ -27,7 +28,10 @@ static int is_builtin_flag(const char *name) {
 const char *const pack_styles[] = { "abstract", "ornate", "terminal", NULL };
 
 /* Pictures the window knows how to draw ('stage:'). */
-const char *const stage_names[] = { "walk", NULL };
+const char *const stage_names[] = {
+    "walk", "bedroom", "kitchen", "fridge", "peephole", "doormat", "phone", "lift", "crosswalk", "taxi",
+    "entrance", "desk", "cake", "coffee", "stand", "deli", "checkout", "cashier", NULL,
+};
 
 // a word for 'show:' and the parts of 'props:': lowercase letters, digits, '_'
 static int word_ok(const char *s) {
@@ -142,6 +146,24 @@ void apply_sets(uint64_t *flags, const FlagSet *fs) {
 
 // 'choice:' and friends before any 'variant:' line belong to an implicit
 // variant with no detail, so simple scenarios need no 'variant:' at all.
+/* What 'sets', 'effects' and 'show' attach to: the last choice, the timeout,
+   or the 'fail:' of a choice's minigame (last_outcome -100 - choice). */
+static FlagSet *out_sets(Variant *v) {
+    if (v->last_outcome == -2) return &v->timeout_sets;
+    if (v->last_outcome <= -100) return &v->choices[-100 - v->last_outcome].fail_sets;
+    return &v->choices[v->last_outcome].sets;
+}
+static Effects *out_fx(Variant *v) {
+    if (v->last_outcome == -2) return &v->timeout_fx;
+    if (v->last_outcome <= -100) return &v->choices[-100 - v->last_outcome].fail_fx;
+    return &v->choices[v->last_outcome].fx;
+}
+static char **out_show(Variant *v) {
+    if (v->last_outcome == -2) return &v->timeout_show;
+    if (v->last_outcome <= -100) return &v->choices[-100 - v->last_outcome].fail_show;
+    return &v->choices[v->last_outcome].show;
+}
+
 static Variant *cur_variant(const char *file, int line, Scenario *s) {
     if (s->nvariants == 0) return new_variant(file, line, s);
     return &s->variants[s->nvariants - 1];
@@ -350,7 +372,7 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
             Variant *v = cur->nvariants ? &cur->variants[cur->nvariants - 1] : NULL;
             if (!v || v->last_outcome == -1)
                 die_at(path, lineno, "'sets' must come right after a 'choice' or 'timeout' line");
-            FlagSet *fs = v->last_outcome == -2 ? &v->timeout_sets : &v->choices[v->last_outcome].sets;
+            FlagSet *fs = out_sets(v);
             char *names[MAX_SETS + 1];
             int n = split_on(val, ',', names, MAX_SETS);
             if (n > MAX_SETS) die_at(path, lineno, "at most %d flags in one 'sets'", MAX_SETS);
@@ -369,15 +391,65 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
                 die_at(path, lineno, "'effects' must come right after a 'choice' or 'timeout' line");
             if (!pk->nmeters) die_at(path, lineno, "'effects' used, but the pack has no 'meters:' line");
             parse_effects(path, lineno, pk, val,
-                          v->last_outcome == -2 ? &v->timeout_fx : &v->choices[v->last_outcome].fx);
+                          out_fx(v));
         } else if (!strcmp(key, "show")) {
             Variant *v = cur->nvariants ? &cur->variants[cur->nvariants - 1] : NULL;
             if (!v || v->last_outcome == -1)
                 die_at(path, lineno, "'show' must come right after a 'choice' or 'timeout' line");
             if (!word_ok(val)) die_at(path, lineno, "'show' is one word: lowercase letters, digits and '_'");
-            char **dst = v->last_outcome == -2 ? &v->timeout_show : &v->choices[v->last_outcome].show;
+            char **dst = out_show(v);
             if (*dst) die_at(path, lineno, "second 'show' for the same outcome");
             *dst = xstrdup(val);
+        } else if (!strcmp(key, "act")) {
+            Variant *v = cur->nvariants ? &cur->variants[cur->nvariants - 1] : NULL;
+            if (!v || v->last_outcome < 0) die_at(path, lineno, "'act' must come right after a 'choice' line");
+            Choice *c = &v->choices[v->last_outcome];
+            if (c->act) die_at(path, lineno, "second 'act' for the same choice");
+            char buf[LINE_BUF];
+            snprintf(buf, sizeof buf, "%s", val);
+            char *name = strtok(buf, " "), *secs = strtok(NULL, " "), *rest = strtok(NULL, "");
+            int kind = name ? mg_kind(name) : -1;
+            if (kind < 0) die_at(path, lineno, "'act' is: mash|timing|cross|catch|lyrics seconds [count] [text]");
+            char *end = NULL;
+            double tm = secs ? strtod(secs, &end) : 0;
+            if (!secs || *end || tm <= 0 || tm > 60) die_at(path, lineno, "'act' needs the seconds it lasts, more than 0 and up to 60");
+            int n = 0;
+            if (rest) {
+                rest = trim(rest);
+                char *sp = strchr(rest, ' ');
+                if (sp) *sp = '\0';
+                if (all_digits(rest)) {
+                    if (!parse_int(rest, 1, 50, &n)) die_at(path, lineno, "the count in 'act' is 1 to 50");
+                    rest = sp ? trim(sp + 1) : NULL;
+                } else if (sp) {
+                    *sp = ' ';
+                }
+            }
+            if (kind == MG_LYRICS) {
+                if (!rest || !*rest) die_at(path, lineno, "'act: lyrics' needs the line to type");
+                for (const char *p = rest; *p; p++)
+                    if (!islower((unsigned char)*p) && *p != ' ')
+                        die_at(path, lineno, "lyrics are lowercase letters and spaces");
+            }
+            if (rest && strlen(rest) >= MG_TEXT) die_at(path, lineno, "the text of 'act' is at most %d characters", MG_TEXT - 1);
+            c->act = kind + 1;
+            c->act_time = tm;
+            c->act_n = n;
+            c->act_text = rest && *rest ? xstrdup(rest) : NULL;
+        } else if (!strcmp(key, "fail")) {
+            Variant *v = cur->nvariants ? &cur->variants[cur->nvariants - 1] : NULL;
+            int ci = !v ? -1 : v->last_outcome >= 0 ? v->last_outcome : v->last_outcome <= -100 ? -100 - v->last_outcome : -1;
+            if (ci < 0 || !v->choices[ci].act) die_at(path, lineno, "'fail' must come after a choice's 'act' line");
+            Choice *c = &v->choices[ci];
+            if (c->has_fail) die_at(path, lineno, "second 'fail' for the same choice");
+            char *parts[3];
+            int n = split_on(val, '|', parts, 2);
+            if (n > 2 || !*parts[0]) die_at(path, lineno, "'fail' is: what happens | mark (mark is optional)");
+            if (n == 2 && !parse_int(parts[1], -MARK_LIMIT, MARK_LIMIT, &c->fail_mark))
+                die_at(path, lineno, "mark must be an integer from %d to %d", -MARK_LIMIT, MARK_LIMIT);
+            c->has_fail = 1;
+            c->fail_text = xstrdup(parts[0]);
+            v->last_outcome = -100 - ci;
         } else if (!strcmp(key, "goal")) {
             Variant *v = cur->nvariants ? &cur->variants[cur->nvariants - 1] : NULL;
             if (cur->play < 0) die_at(path, lineno, "'goal' used, but the scenario has no 'play:' line before it");
@@ -403,7 +475,7 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
             if (cur->stage) die_at(path, lineno, "second 'stage' in one scenario");
             int ok = 0;
             for (int i = 0; stage_names[i]; i++) ok |= !strcmp(val, stage_names[i]);
-            if (!ok) die_at(path, lineno, "unknown stage '%s' (there is: walk)", val);
+            if (!ok) die_at(path, lineno, "unknown stage '%s' (see FORMAT.md for the list)", val);
             cur->stage = xstrdup(val);
         } else if (!strcmp(key, "play")) {
             if (cur->play >= 0) die_at(path, lineno, "second 'play' in one scenario");
