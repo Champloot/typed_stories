@@ -84,6 +84,8 @@ typedef struct {
     int     nph, cap;
     FlagSet sets;   // what the day remembers if this happens
     Effects fx;     // how the meters move if this happens
+    char   *show;   // how the picture reacts ('show:'), NULL if it just stays
+    char    goal;   // activity scenes: the spot to walk to (its map cell), 0 otherwise
 } Choice;
 
 /* One hidden version of a scenario. The player sees its detail (the cue)
@@ -96,6 +98,8 @@ typedef struct {
     int     timeout_mark;
     FlagSet timeout_sets;
     Effects timeout_fx;
+    char   *timeout_show;
+    char   *props;          // what the picture shows: "dog=growl stranger=near", NULL if nothing
     int     nchoices;
     Choice  choices[MAX_CHOICES];
     int     has_cond;       // 'if:' given: only possible when cond holds, and then preferred
@@ -108,6 +112,9 @@ typedef struct {
     char    *title;
     double   time_limit;    // seconds
     int      slot;          // SLOT_*
+    char    *stage;         // the picture drawn for it ('stage:'), NULL for text only
+    int      play;          // activity after the answer ('play:'), -1 for none
+    double   play_time;     // seconds for the activity
     int      phase;         // index into Pack.phases, -1 if none
     int      has_needs;     // 'needs:' given: an unlocked scene, added to its phase when needs holds
     Cond     needs;

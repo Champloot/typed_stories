@@ -221,92 +221,131 @@ timeout: Someone else kicks it while you think. They take the first cup. | 0
 
 scenario: On a walk, your dog is chewing something in the grass.
 phase: Walk
+stage: walk
 time: 4
 
 variant: It is a sock.
+props: dog=chew item=sock
 choice: drop_it | The dog drops it. It was a sock. Not yours. | 1
+show: drop
 choice: allow_eat | The dog finishes the sock. You wish it good digestion. So will the vet. | -1
+show: eat
 effects: money -1
 timeout: You hesitate. The sock is gone. Forever. | -1
+show: eat
 effects: money -1
 
 variant: It is a stick.
+props: dog=chew item=stick
 choice: drop_it | The dog drops the stick and looks at you like you cancelled Christmas. | 0
+show: drop
 choice: allow_eat | The dog chews the stick happily. It is just a stick. | 0
 timeout: The dog decides for you. It is still a stick. | 0
 
 variant: You can't see what it is. It smells of sausage. There are more pieces in the grass.
+props: dog=chew item=sausage
 choice: drop_it | The dog drops it. You notice a strange blue powder on it. Good call. | 1
+show: drop
 choice: allow_eat | The dog eats it. Ten minutes later you are running to the vet. | -2
+show: eat
 effects: money -2, nerves -1
 sets: dog_poisoned
 timeout: You hesitate. The dog swallows it. Ten minutes later you are running to the vet. | -2
+show: eat
 effects: money -2, nerves -1
 sets: dog_poisoned
 
 
 scenario: A stranger stops and reaches out to pet your dog.
 phase: Walk
+stage: walk
 time: 5
 
 variant: Your dog wags its tail and leans toward him.
+props: dog=wag stranger=near
 choice: allow_pet + yes | Your dog melts. He says 'who's a good boy' eleven times. | 0
+show: pet
 effects: nerves +1
 choice: rude + no | He pulls his hand back. 'Sorry, sorry.' He looks a little hurt. | 0
+show: stranger_leaves
 effects: people -1
 timeout: You freeze. He pets the dog anyway. Everyone is fine. | 0
+show: pet
 
 variant: Your dog growls quietly. Its ears are flat.
+props: dog=growl stranger=near
 choice: allow_pet + yes | Your dog nips his finger. Now you know his lawyer's name. | -2
+show: bite
 effects: money -2, people -1
 choice: rude + no | 'Fair enough,' he says to the dog. 'Grumpy one, huh.' | 1
+show: stranger_leaves
 timeout: He pets it anyway. The dog nips him. You both say sorry a lot. | -1
+show: bite
 effects: people -1
 
 variant: He has a leash in his other hand. There is no dog on it.
+props: dog=calm stranger=leash
 choice: allow_pet + yes | He grabs your dog's collar. You get it back after a short, loud chase. | -2
+show: grab
 effects: nerves -2
 choice: rude + no | He tsks and walks away fast. The empty leash swings. | 1
+show: stranger_leaves
 timeout: He reaches for the collar. You pull the leash away just in time. | -1
+show: stranger_leaves
 effects: nerves -1
 
 
 scenario: Your dog sees a squirrel and goes stiff.
 phase: Walk
+stage: walk
 time: 4
 
 variant: The squirrel is on the other side of a busy road.
+props: dog=stiff squirrel=road
 choice: heel | The dog sits. The squirrel lives. The traffic lives. | 1
+show: sit
 effects: nerves +1
 choice: let_go | The dog bolts across the road. Cars stop. Everyone stares. The squirrel laughs. | -2
+show: dog_runs
 effects: nerves -1, people -1
 timeout: The leash slips out of your hand. The dog is back in a minute. You aged a year. | -1
+show: dog_runs
 effects: nerves -1
 
 variant: You are in a fenced dog park. Nobody else is around.
+props: dog=stiff squirrel=park
 choice: heel | The dog sits and gives you a look of deep disappointment. | 0
+show: sit
 choice: let_go | The dog sprints. The squirrel escapes up a tree. Best day of the dog's life. | 1
+show: dog_runs
 effects: nerves +1
 timeout: The dog drags you halfway across the park. | 0
+show: dog_runs
 
 # ---------------------------------------------------------------- Store
 
+# Type the aisle, then walk there (WASD or arrows) before the time runs out.
 scenario: At the store. You need potatoes. The info stand lists the aisles.
 phase: Store
 time: 6
+play: store 9
 
 variant: It says: POTATOES - AISLE 4.
 choice: aisle4 | Aisle 4. Potatoes. The world makes sense. | 1
+goal: aisle4
 choice: aisle7 | Aisle 7 is pet food. A dog on a bag judges you. | -1
+goal: aisle7
 effects: nerves -1
-timeout: You stare at the stand. A kid takes the last potato. | -1
+timeout: Too slow. A kid takes the last potato right in front of you. | -1
 effects: nerves -1
 
 variant: It says: POTATOES - AISLE 4. A handwritten note is taped over it: 'moved -> 7'.
 choice: aisle4 | Aisle 4 is wine now. You stand there with no potatoes and some ideas. | -1
+goal: aisle4
 effects: nerves -1
 choice: aisle7 | Aisle 7. Potatoes. Bless whoever wrote that note. | 1
-timeout: You stare at the stand. A kid takes the last potato. | -1
+goal: aisle7
+timeout: Too slow. A kid takes the last potato right in front of you. | -1
 effects: nerves -1
 
 

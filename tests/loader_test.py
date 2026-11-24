@@ -254,6 +254,23 @@ bad("finale_if_fields", FN + "finale_if: said_yes | Title\n", "'finale_if' is: f
 bad("finale_if_unset_flag", FN + "finale_if: dragon_friend | Pals | Bakery.\n", "flag 'dragon_friend' is checked here, but no outcome sets it")
 bad("finale_if_alone", F + "finale_if: said_yes | Yes | You said yes.\n", "'finale_if' needs at least one plain 'finale'")
 bad("finale_if_too_many", FN + "".join(f"finale_if: said_yes | t{i} | x\n" for i in range(9)), "at most 8 'finale_if' lines")
+# --- pictures and activities
+ST = V.replace("time: 3\n", "time: 3\nstage: walk\n").replace("variant: cue one\n", "variant: cue one\nprops: dog=growl stranger=near\n").replace("choice: yes | ok | 1\n", "choice: yes | ok | 1\nshow: pet\n")
+PL = V.replace("time: 3\n", "time: 3\nplay: store 9\n").replace("choice: yes | ok | 1\n", "choice: yes | ok | 1\ngoal: aisle4\n").replace("choice: no | meh\n", "choice: no | meh\ngoal: checkout\n")
+bad("stage_unknown", ST.replace("stage: walk", "stage: moon"), "unknown stage 'moon' (there is: walk)")
+bad("stage_twice", ST.replace("stage: walk", "stage: walk\nstage: walk"), "second 'stage' in one scenario")
+bad("props_no_equals", ST.replace("dog=growl", "dog"), "'props' is: name=value name=value (got 'dog')")
+bad("props_caps", ST.replace("dog=growl", "dog=Growl"), "'props' names and values are lowercase letters, digits and '_'")
+bad("show_before_outcome", ST.replace("props: dog=growl stranger=near\n", "show: pet\n"), "'show' must come right after a 'choice' or 'timeout' line")
+bad("show_two_words", ST.replace("show: pet", "show: pet it"), "'show' is one word")
+bad("show_twice", ST.replace("show: pet", "show: pet\nshow: bite"), "second 'show' for the same outcome")
+bad("play_unknown", PL.replace("play: store 9", "play: zoo 9"), "unknown activity 'zoo' (there is: store)")
+bad("play_no_time", PL.replace("play: store 9", "play: store"), "'play' is: activity seconds")
+bad("play_after_choice", PL.replace("play: store 9\n", "").replace("goal: aisle4\n", "play: store 9\n"), "'play' must come before the first variant or choice")
+bad("goal_without_play", V.replace("choice: yes | ok | 1\n", "choice: yes | ok | 1\ngoal: aisle4\n"), "'goal' used, but the scenario has no 'play:' line before it")
+bad("goal_unknown_spot", PL.replace("goal: aisle4", "goal: aisle9"), "no spot 'aisle9' in 'store' (there are: aisle1 .. aisle8, checkout)")
+bad("goal_missing", PL.replace("goal: checkout\n", ""), "choice 'no' has no 'goal' (where to walk)")
+bad("goal_on_timeout", PL + "goal: aisle1\n", "'goal' must come right after a 'choice' line")
 # --- words.lst
 def wordbad(name, words, expect):
     bad(name, None, expect, files={"01-t.txt": V, "words.lst": words})
@@ -265,6 +282,7 @@ wordbad("word_in_answers", "hedgehog\nyes\n", "words.lst:2: 'yes' is part of an 
 import subprocess as sp
 for nm, files in (("meters_valid", {"01-t.txt": M}),
                   ("needs_builtin_valid", {"01-t.txt": F.replace("needs: said_yes", "needs: wordsmith or today")}),
+                  ("stage_play_valid", {"01-t.txt": ST + "\nscenario: S2\ntime: 3\nplay: store 5\nchoice: yes | ok\ngoal: aisle1\ntimeout: late\n"}),
                   ("finales_valid", {"01-t.txt": "style: terminal\n" + FN + "finale_if: said_yes or today | Yes | You said yes.\n"}),
                   ("words_valid", {"01-t.txt": V, "words.lst": "# fine\nhedgehog\nnarwhal\n"})):
     try:

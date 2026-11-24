@@ -33,6 +33,10 @@ int ui_key(int timeout_ms) {
     if (ch == KEY_BACKSPACE || ch == 127 || ch == 8) return K_BACKSPACE;
     if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) return K_ENTER;
     if (ch == K_CTRL_U || ch == K_CTRL_W) return ch;
+    if (ch == KEY_UP)    return K_UP;
+    if (ch == KEY_DOWN)  return K_DOWN;
+    if (ch == KEY_LEFT)  return K_LEFT;
+    if (ch == KEY_RIGHT) return K_RIGHT;
     if (ch >= 32 && ch <= 126) return ch;
     return K_OTHER;
 }
@@ -279,6 +283,47 @@ void ui_ending(const EndingView *v) {
     attroff(COLOR_PAIR(C_BAD) | A_BOLD);
     r += print_wrapped(r, 4, v->text);
     mvprintw(r + 1, 4, "(press any key)");
+    refresh();
+}
+
+// The terminal can't tell a held key: every press is one step.
+int ui_held(void) { return -1; }
+
+// The map in characters: '#' walls and shelves, digits for the aisles' goods,
+// 'K' checkouts, 'i' the info stand, '@' you, 'c' carts. The goal is bold.
+void ui_walk(const WalkView *v) {
+    char line[200], up[64];
+    erase();
+    draw_status();
+    draw_header(&v->scene);
+    upcase(up, sizeof up, v->goal_name);
+    snprintf(line, sizeof line, "GET TO %s. WASD or arrows.  (you said: %s)", up, v->answer);
+    attron(A_BOLD);
+    int r = 3 + print_wrapped(3, 4, line) + 1;
+    attroff(A_BOLD);
+    for (int y = 0; y < v->h; y++) {
+        move(r + y, 4);
+        for (int x = 0; x < v->w; x++) {
+            char c = v->rows[y][x];
+            int cart = 0;
+            for (int i = 0; i < v->ncarts; i++) cart |= v->cart_x[i] == x && v->cart_y[i] == y;
+            if (x == v->px && y == v->py) { attron(A_BOLD | COLOR_PAIR(C_OK)); addch('@'); attroff(A_BOLD | COLOR_PAIR(C_OK)); continue; }
+            if (cart) { attron(COLOR_PAIR(C_BAD)); addch('c'); attroff(COLOR_PAIR(C_BAD)); continue; }
+            if (c == v->goal) { attron(A_BOLD | COLOR_PAIR(C_WARN)); addch(c); attroff(A_BOLD | COLOR_PAIR(C_WARN)); continue; }
+            addch(c == '.' ? ' ' : c);
+        }
+    }
+    r += v->h + 1;
+    int bar_w = 30, filled = (int)(bar_w * (v->left / v->limit));
+    if (filled < 0) filled = 0;
+    mvprintw(r, 4, "[");
+    for (int i = 0; i < bar_w; i++) addch(i < filled ? '#' : ' ');
+    printw("] %.1fs", v->left);
+    if (v->bumped) {
+        attron(COLOR_PAIR(C_BAD));
+        mvprintw(r + 2, 4, "Bump! A cart.");
+        attroff(COLOR_PAIR(C_BAD));
+    }
     refresh();
 }
 

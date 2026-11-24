@@ -15,7 +15,11 @@ enum {
     K_ENTER     = '\n',
     K_CTRL_U    = 21,   // erase the line
     K_CTRL_W    = 23,   // erase a word
+    K_UP = 2, K_DOWN = 3, K_LEFT = 4, K_RIGHT = 5,  // arrows (walking)
 };
+
+/* Held directions (ui_held), for walking. */
+enum { DIR_UP = 1, DIR_DOWN = 2, DIR_LEFT = 4, DIR_RIGHT = 8 };
 
 /* The strip on top of every in-game screen. */
 typedef struct {
@@ -32,6 +36,9 @@ typedef struct {
     const char *phase;          // NULL in packs without phases
     const char *title;
     const char *detail;         // the cue, NULL if none
+    const char *stage;          // the picture ('stage:'), NULL if none
+    const char *props;          // what is in it: "dog=growl stranger=near", NULL if nothing
+    const char *show;           // after the answer: how the picture reacts, NULL if it does not
 } Scene;
 
 typedef struct {
@@ -65,6 +72,24 @@ typedef struct {
     const char *msg;            // "Huh? ..." after a miss, "" otherwise
     double      left, limit;    // seconds
 } PromptView;
+
+/* An activity: the player walks a top-down map to the spot the answer named.
+   Cells are as in activity.h; the window draws them, the terminal prints them. */
+typedef struct {
+    Scene        scene;
+    const char  *answer;        // what was typed
+    const char  *goal_name;     // "aisle 4", for the line on top
+    char         goal;          // the goal's cell character
+    int          w, h;
+    const char *const *rows;
+    int          px, py, ppx, ppy;
+    double       moved_at;      // when the player last stepped (to slide between cells)
+    int          ncarts;
+    int          cart_x[4], cart_y[4], cart_dx[4], cart_px[4];
+    double       cart_moved[4];
+    int          bumped;        // a cart just hit the player
+    double       left, limit;
+} WalkView;
 
 /* Meter changes of an outcome (a random timeout can have two sets). */
 typedef struct {
@@ -128,6 +153,8 @@ void ui_ending(const EndingView *v);
 void ui_finale(const FinaleView *v);    // how the story ends, when the day was lived through
 void ui_summary(const SummaryView *v);
 void ui_set_theme(const char *style);   // a pack's 'style:'; NULL is the menu's look
+void ui_walk(const WalkView *v);
+int  ui_held(void);             // DIR_* held right now; -1 if this screen can't tell (then each key press is a step)
 int  ui_key(int timeout_ms);    // waits for a key (forever if timeout_ms < 0); K_NONE on timeout
 void ui_flush(void);            // forget keys pressed ahead
 

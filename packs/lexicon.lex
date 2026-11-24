@@ -167,13 +167,13 @@ hint: let the dog run
 
 intent: aisle4
 hint: aisle 4
-1: aisle four | aisle 4 | four | 4
+1: aisle four | aisle 4 | aisle4 | four | 4
 2: number four | the fourth one | fourth
 3: aisle the fourth | four it is
 
 intent: aisle7
 hint: aisle 7
-1: aisle seven | aisle 7 | seven | 7
+1: aisle seven | aisle 7 | aisle7 | seven | 7
 2: number seven | the seventh one | seventh
 3: follow the note | trust the note | seven it is
 

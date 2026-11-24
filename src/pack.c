@@ -5,6 +5,7 @@
 #include <strings.h>
 
 #include "pack.h"
+#include "activity.h"
 #include "lexicon.h"
 #include "util.h"
 
@@ -24,6 +25,17 @@ static int is_builtin_flag(const char *name) {
 }
 
 const char *const pack_styles[] = { "abstract", "ornate", "terminal", NULL };
+
+/* Pictures the window knows how to draw ('stage:'). */
+const char *const stage_names[] = { "walk", NULL };
+
+// a word for 'show:' and the parts of 'props:': lowercase letters, digits, '_'
+static int word_ok(const char *s) {
+    if (!*s) return 0;
+    for (; *s; s++)
+        if (!(islower((unsigned char)*s) || isdigit((unsigned char)*s) || *s == '_')) return 0;
+    return 1;
+}
 
 int pack_flag(const Pack *pk, const char *name) {
     for (int i = 0; i < pk->nflags; i++)
@@ -168,6 +180,9 @@ static void check_scenario(const char *file, const Scenario *s) {
         const Variant *v = &s->variants[k];
         if (!v->timeout_text) die_at(file, v->src_line, "scenario '%s': missing 'timeout'", s->title);
         if (v->nchoices < 1)  die_at(file, v->src_line, "scenario '%s': needs at least one 'choice'", s->title);
+        for (int i = 0; s->play >= 0 && i < v->nchoices; i++)
+            if (!v->choices[i].goal)
+                die_at(file, v->src_line, "scenario '%s': choice '%s' has no 'goal' (where to walk)", s->title, v->choices[i].label);
         for (int i = 0; i < v->nchoices; i++)
             for (int j = i + 1; j < v->nchoices; j++)
                 for (int a = 0; a < v->choices[i].nph; a++)
@@ -297,6 +312,7 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
             s->title = xstrdup(val);
             s->slot = SLOT_ANY;
             s->phase = -1;
+            s->play = -1;
             s->src_line = lineno;
         } else if (!cur) {
             die_at(path, lineno, "'%s' before the first 'scenario:'", key);
@@ -354,6 +370,53 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
             if (!pk->nmeters) die_at(path, lineno, "'effects' used, but the pack has no 'meters:' line");
             parse_effects(path, lineno, pk, val,
                           v->last_outcome == -2 ? &v->timeout_fx : &v->choices[v->last_outcome].fx);
+        } else if (!strcmp(key, "show")) {
+            Variant *v = cur->nvariants ? &cur->variants[cur->nvariants - 1] : NULL;
+            if (!v || v->last_outcome == -1)
+                die_at(path, lineno, "'show' must come right after a 'choice' or 'timeout' line");
+            if (!word_ok(val)) die_at(path, lineno, "'show' is one word: lowercase letters, digits and '_'");
+            char **dst = v->last_outcome == -2 ? &v->timeout_show : &v->choices[v->last_outcome].show;
+            if (*dst) die_at(path, lineno, "second 'show' for the same outcome");
+            *dst = xstrdup(val);
+        } else if (!strcmp(key, "goal")) {
+            Variant *v = cur->nvariants ? &cur->variants[cur->nvariants - 1] : NULL;
+            if (cur->play < 0) die_at(path, lineno, "'goal' used, but the scenario has no 'play:' line before it");
+            if (!v || v->last_outcome < 0) die_at(path, lineno, "'goal' must come right after a 'choice' line");
+            Choice *c = &v->choices[v->last_outcome];
+            if (c->goal) die_at(path, lineno, "second 'goal' for the same choice");
+            c->goal = activity_spot(cur->play, val);
+            if (!c->goal) die_at(path, lineno, "no spot '%s' in '%s' (there are: %s)", val, activity_name(cur->play), activity_spots(cur->play));
+        } else if (!strcmp(key, "props")) {
+            Variant *v = cur_variant(path, lineno, cur);
+            if (v->props) die_at(path, lineno, "second 'props' in the same variant");
+            char buf[LINE_BUF];
+            snprintf(buf, sizeof buf, "%s", val);
+            for (char *tok = strtok(buf, " "); tok; tok = strtok(NULL, " ")) {
+                char *eq = strchr(tok, '=');
+                if (!eq) die_at(path, lineno, "'props' is: name=value name=value (got '%s')", tok);
+                *eq = '\0';
+                if (!word_ok(tok) || !word_ok(eq + 1))
+                    die_at(path, lineno, "'props' names and values are lowercase letters, digits and '_'");
+            }
+            v->props = xstrdup(val);
+        } else if (!strcmp(key, "stage")) {
+            if (cur->stage) die_at(path, lineno, "second 'stage' in one scenario");
+            int ok = 0;
+            for (int i = 0; stage_names[i]; i++) ok |= !strcmp(val, stage_names[i]);
+            if (!ok) die_at(path, lineno, "unknown stage '%s' (there is: walk)", val);
+            cur->stage = xstrdup(val);
+        } else if (!strcmp(key, "play")) {
+            if (cur->play >= 0) die_at(path, lineno, "second 'play' in one scenario");
+            if (cur->nvariants) die_at(path, lineno, "'play' must come before the first variant or choice");
+            char *sp = strchr(val, ' ');
+            char *end = NULL;
+            double t = sp ? strtod(sp + 1, &end) : 0;
+            if (!sp || end == sp + 1 || *end || t <= 0 || t > 60)
+                die_at(path, lineno, "'play' is: activity seconds (e.g. 'play: store 10', up to 60 seconds)");
+            *sp = '\0';
+            cur->play = activity_find(val);
+            if (cur->play < 0) die_at(path, lineno, "unknown activity '%s' (there is: store)", val);
+            cur->play_time = t;
         } else if (!strcmp(key, "weight")) {
             Variant *v = cur_variant(path, lineno, cur);
             if (!parse_int(val, 1, 100, &v->weight))

@@ -13,6 +13,8 @@
 #include "rng.h"
 #include "ui.h"
 #include "util.h"
+#include "activity.h"
+#include "stage_gl.h"
 
 #define FONT_PX  64             // glyphs are rasterized once at this size and scaled down
 #define FADE_S   0.18           // fade-in of a new screen
@@ -193,7 +195,7 @@ static void upcase(char *dst, size_t cap, const char *src) {
 /* The game hands over views whose strings may change or go away after the
    call, but the window redraws every frame, so everything is copied here. */
 
-enum { S_NONE, S_MENU, S_DAY, S_INTRO, S_PROMPT, S_OUTCOME, S_ENDING, S_FINALE, S_SUMMARY };
+enum { S_NONE, S_MENU, S_DAY, S_INTRO, S_PROMPT, S_WALK, S_OUTCOME, S_ENDING, S_FINALE, S_SUMMARY };
 
 static int    screen = S_NONE;
 static double screen_since;     // for the fade-in
@@ -212,6 +214,7 @@ static union {
     EndingView   ending;
     FinaleView   finale;
     SummaryView  sum;
+    WalkView     walk;
 } view;
 
 static Hud    hud;
@@ -233,10 +236,24 @@ static const char *keep(const char *s) {
     return keep_in(arena, sizeof arena, &arena_used, s);
 }
 
+// The picture's clocks: when this scene first appeared (people walk in), and
+// when its reaction started.
+static int    stage_idx = -1;
+static double stage_since, show_since;
+static char   last_show[32];
+
 static void keep_scene(Scene *s) {
     s->phase = keep(s->phase);
     s->title = keep(s->title);
     s->detail = keep(s->detail);
+    s->stage = keep(s->stage);
+    s->props = keep(s->props);
+    s->show = keep(s->show);
+    if (s->idx != stage_idx) { stage_idx = s->idx; stage_since = now(); last_show[0] = '\0'; }
+    if (strcmp(s->show ? s->show : "", last_show)) {
+        snprintf(last_show, sizeof last_show, "%s", s->show ? s->show : "");
+        show_since = now();
+    }
     snprintf(mood_key, sizeof mood_key, "%s", s->phase ? s->phase : "day");
 }
 
@@ -272,6 +289,7 @@ void ui_menu(const MenuView *v) {
 
 void ui_day_start(const DayStartView *v) {
     set_screen(S_DAY, -1);
+    stage_idx = -1;
     view.day = *v;
     view.day.pack = keep(v->pack);
     view.day.date = keep(v->date);
@@ -320,6 +338,24 @@ void ui_finale(const FinaleView *v) {
     view.finale = *v;
     view.finale.title = keep(v->title);
     view.finale.text = keep(v->text);
+}
+
+void ui_walk(const WalkView *v) {
+    set_screen(S_WALK, v->scene.idx);
+    view.walk = *v;
+    keep_scene(&view.walk.scene);
+    view.walk.answer = keep(v->answer);
+    view.walk.goal_name = keep(v->goal_name);
+}
+
+// Walking keys go by the key's place on the keyboard, so WASD works in any layout.
+int ui_held(void) {
+    int m = 0;
+    if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP))    m |= DIR_UP;
+    if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN))  m |= DIR_DOWN;
+    if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT))  m |= DIR_LEFT;
+    if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) m |= DIR_RIGHT;
+    return m;
 }
 
 void ui_summary(const SummaryView *v) {
@@ -649,10 +685,27 @@ static float drop_cap(char ch, float x, float y) {
 }
 
 // Title and cue; returns the y below them.
+static void draw_stage(const Scene *s, Rectangle box) {
+    StagePal p = { C_BG, C_PANEL, C_FAINT, C_DIM, C_TEXT, C_CUE, C_OK, C_BAD, C_WARN, C_ACCENT, alpha };
+    double t = now();
+    stage_draw(s->stage, s->props, s->show, box, t - stage_since, s->show ? t - show_since : 0, &p);
+}
+
 static float draw_situation(const Scene *s) {
     float y = u * (th_id == TH_ORNATE ? 5.6f : 4.4f), x = L, w = W, top = y, cap = 0;
+    float title_size = u * 1.2f, cue_size = u * 1.0f;
     const char *title = s->title;
-    if (th_id == TH_ORNATE && isalpha((unsigned char)title[0])) {
+    if (s->stage) {             // the picture on top, the words become its caption
+        float a = alpha;
+        alpha = 1;              // the picture stays while the text around it changes
+        Rectangle box = { L, u * 3.6f, W, u * 10.6f };
+        draw_stage(s, box);
+        alpha = a;
+        y = top = box.y + box.height + u * 0.8f;
+        title_size = u * 0.95f;
+        cue_size = u * 0.82f;
+    }
+    if (th_id == TH_ORNATE && !s->stage && isalpha((unsigned char)title[0])) {
         cap = drop_cap((char)toupper((unsigned char)title[0]), L, y);
         title++;
         x = L + cap + u * 0.7f;
@@ -660,11 +713,11 @@ static float draw_situation(const Scene *s) {
     }
     char tbuf[512];
     if (th_id == TH_TERMINAL) { snprintf(tbuf, sizeof tbuf, "%s", title); title = tbuf; }
-    y += wrapped(bold, title, x, y, w, u * 1.2f, C_TEXT, 1);
+    y += wrapped(bold, title, x, y, w, title_size, C_TEXT, 1);
     if (s->detail) {
-        y += u * 0.5f;
+        y += u * 0.4f;
         float cx = x + u * 0.8f, cw = w - u * 0.8f;
-        float h = wrapped(cuefont, s->detail, cx, y, cw, u * 1.0f, C_CUE, 0);
+        float h = wrapped(cuefont, s->detail, cx, y, cw, cue_size, C_CUE, 0);
         if (th_id == TH_TERMINAL) {
             text(font, "!", x, y, u * 1.0f, C_WARN);
         } else if (th_id == TH_ORNATE) {
@@ -672,7 +725,7 @@ static float draw_situation(const Scene *s) {
         } else {
             DrawRectangleRec((Rectangle){ x, y + u * 0.1f, u * 0.14f, h - u * 0.3f }, col(C_WARN));
         }
-        wrapped(cuefont, s->detail, cx, y, cw, u * 1.0f, C_CUE, 1);
+        wrapped(cuefont, s->detail, cx, y, cw, cue_size, C_CUE, 1);
         y += h;
     }
     if (cap && y < top + cap) y = top + cap;
@@ -1007,13 +1060,120 @@ static void draw_summary(void) {
     press(th->any_key);
 }
 
+/* ---------- the store from above ---------- */
+
+static Color aisle_color(int n) {
+    Color pal[5] = { C_ACCENT, C_WARN, C_OK, C_BAD, C_CUE };
+    return pal[n % 5];
+}
+
+static void draw_walk(void) {
+    const WalkView *v = &view.walk;
+    double t = now();
+    draw_header(&v->scene);
+    char line[160], up[64];
+    upcase(up, sizeof up, v->goal_name);
+    snprintf(line, sizeof line, "GET TO %s", up);
+    float y = u * 4.0f;
+    text(bold, line, L, y, u * 1.0f, C_WARN);
+    snprintf(line, sizeof line, "you said \"%s\"     WASD or arrows", v->answer);
+    text(font, line, L + W - text_w(font, line, u * 0.65f), y + u * 0.25f, u * 0.65f, C_DIM);
+
+    // the map, as big as fits
+    float top = u * 5.8f, avail_h = u * 18.0f;
+    float cs = W / v->w;
+    if (cs > avail_h / v->h) cs = avail_h / v->h;
+    float mx = L + (W - cs * v->w) / 2, my = top;
+    DrawRectangleRounded((Rectangle){ mx - cs * 0.2f, my - cs * 0.2f, cs * (v->w + 0.4f), cs * (v->h + 0.4f) }, 0.04f, 8, col(C_PANEL));
+    for (int y_ = 0; y_ < v->h; y_++)
+        for (int x_ = 0; x_ < v->w; x_++) {
+            char c = v->rows[y_][x_];
+            Rectangle r = { mx + x_ * cs, my + y_ * cs, cs, cs };
+            int border = x_ == 0 || y_ == 0 || x_ == v->w - 1 || y_ == v->h - 1;
+            if (c == '#' && border) {
+                DrawRectangleRec(r, col(C_FAINT));
+            } else if (c == '#') {          // a shelf, colored like its aisle's goods
+                Color sc = aisle_color(x_ / 3);
+                DrawRectangleRec((Rectangle){ r.x + cs * 0.12f, r.y, cs * 0.76f, cs }, col(ColorAlpha(sc, 0.35f)));
+                for (int i = 0; i < 2; i++)
+                    DrawCircleV((Vector2){ r.x + cs * (0.33f + i * 0.34f), r.y + cs * 0.5f }, cs * 0.12f, col(ColorAlpha(sc, 0.8f)));
+            } else if (c >= '1' && c <= '9') {      // the goods of an aisle
+                int goal = c == v->goal;
+                float pulse = goal ? 0.35f + 0.25f * (float)sin(t * 6) : 0.12f;
+                DrawRectangleRec(r, col(ColorAlpha(goal ? C_WARN : C_DIM, pulse)));
+            } else if (c == 'K') {
+                DrawRectangleRounded((Rectangle){ r.x + 1, r.y + cs * 0.1f, cs - 2, cs * 0.8f }, 0.3f, 4, col(C_DIM));
+                DrawRectangle((int)(r.x + cs * 0.15f), (int)(r.y + cs * 0.45f), (int)(cs * 0.7f), (int)(cs * 0.1f), col(C_PANEL));
+            } else if (c == 'k') {
+                if (c == v->goal) DrawRectangleRec(r, col(ColorAlpha(C_WARN, 0.3f + 0.2f * (float)sin(t * 6))));
+            } else if (c == 'i') {
+                DrawCircleV((Vector2){ r.x + cs / 2, r.y + cs / 2 }, cs * 0.45f, col(C_ACCENT));
+                text(bold, "i", r.x + cs * 0.38f, r.y + cs * 0.15f, cs * 0.7f, C_PANEL);
+            }
+        }
+    // aisle numbers over each aisle
+    for (int n = 1; n <= 8; n++) {
+        char num[4];
+        snprintf(num, sizeof num, "%d", n);
+        float ax = mx + (3 * n + 2) * cs, size = cs * 0.9f;
+        int goal = v->goal == '0' + n;
+        text(bold, num, ax - text_w(bold, num, size) / 2, my + 1.5f * cs, size, goal ? C_WARN : C_DIM);
+    }
+    text(font, "IN", mx + 1.1f * cs, my + (v->h - 0.85f) * cs, cs * 0.6f, C_DIM);
+    // a bouncing arrow over the goal
+    for (int y_ = 0; y_ < v->h; y_++) {
+        const char *row = v->rows[y_];
+        const char *p = strchr(row, v->goal);
+        if (!p) continue;
+        float gx = mx + (float)(p - row + 1) * cs, gy = my + y_ * cs - cs * (0.6f + 0.25f * (float)sin(t * 5));
+        DrawPoly((Vector2){ gx, gy }, 3, cs * 0.4f, 90, col(C_WARN));
+        break;
+    }
+    // carts slide from cell to cell
+    for (int i = 0; i < v->ncarts; i++) {
+        float f = (float)((t - v->cart_moved[i]) / CART_STEP_S);
+        if (f > 1) f = 1;
+        if (f < 0) f = 0;
+        float cx = mx + (v->cart_px[i] + (v->cart_x[i] - v->cart_px[i]) * f) * cs, cy = my + v->cart_y[i] * cs;
+        Rectangle body = { cx + cs * 0.12f, cy + cs * 0.2f, cs * 0.76f, cs * 0.55f };
+        DrawRectangleRoundedLinesEx(body, 0.3f, 4, cs * 0.08f, col(C_TEXT));
+        float hx = v->cart_dx[i] > 0 ? body.x : body.x + body.width;
+        DrawLineEx((Vector2){ hx, body.y }, (Vector2){ hx - v->cart_dx[i] * cs * 0.18f, body.y - cs * 0.15f }, cs * 0.08f, col(C_TEXT));
+        DrawCircleV((Vector2){ body.x + cs * 0.15f, body.y + body.height + cs * 0.08f }, cs * 0.08f, col(C_TEXT));
+        DrawCircleV((Vector2){ body.x + body.width - cs * 0.15f, body.y + body.height + cs * 0.08f }, cs * 0.08f, col(C_TEXT));
+    }
+    // you, sliding from cell to cell
+    float f = (float)((t - v->moved_at) / WALK_STEP_S);
+    if (f > 1) f = 1;
+    if (f < 0) f = 0;
+    float px = mx + (v->ppx + (v->px - v->ppx) * f + 0.5f) * cs, py = my + (v->ppy + (v->py - v->ppy) * f + 0.5f) * cs;
+    if (v->bumped) DrawRing((Vector2){ px, py }, cs * 0.5f, cs * 0.62f, 0, 360, 32, col(C_BAD));
+    DrawCircleV((Vector2){ px, py }, cs * 0.38f, col(C_ACCENT));
+    DrawCircleV((Vector2){ px, py }, cs * 0.16f, col(C_PANEL));
+
+    // time
+    float ty = my + cs * (v->h + 0.6f);
+    float frac = (float)(v->left / v->limit);
+    Color tc = frac < 0.3f ? C_BAD : frac < 0.6f ? C_WARN : C_OK;
+    char secs[32];
+    snprintf(secs, sizeof secs, "%.1fs", v->left);
+    float sw = text_w(font, secs, u * 0.62f) + u * 0.6f;
+    DrawRectangleRounded((Rectangle){ L, ty, W - sw, u * 0.28f }, 1, 6, col(C_FAINT));
+    DrawRectangleRounded((Rectangle){ L, ty, (W - sw) * frac, u * 0.28f }, 1, 6, col(tc));
+    text(font, secs, L + W - sw + u * 0.6f, ty - u * 0.2f, u * 0.62f, tc);
+    if (v->bumped) text(bold, "Bump! A cart.", L, ty + u * 0.8f, u * 0.8f, C_BAD);
+}
+
 static void draw_screen(void) {
     // the terminal types things out, except where the player is racing the clock
     reveal = -1;
     if (th_id == TH_TERMINAL && (screen == S_INTRO || screen == S_DAY || screen == S_FINALE || screen == S_ENDING))
         reveal = (long)((now() - screen_since) * 700.0);
 
-    if (th_id == TH_ABSTRACT && screen != S_MENU && screen != S_FINALE) abstract_backdrop(mood_key);
+    // shapes in the background, except where a picture is the background's job
+    int pictured = (screen == S_INTRO && view.intro.stage) || (screen == S_PROMPT && view.prompt.scene.stage) ||
+                   (screen == S_OUTCOME && view.out.scene.stage) || screen == S_WALK;
+    if (th_id == TH_ABSTRACT && screen != S_MENU && screen != S_FINALE && !pictured) abstract_backdrop(mood_key);
     if (th_id == TH_ABSTRACT && screen == S_FINALE) abstract_finale(view.finale.good, view.finale.special);
     if (th_id == TH_ORNATE) ornate_backdrop();
     if (th_id == TH_TERMINAL) terminal_backdrop();
@@ -1035,6 +1195,7 @@ static void draw_screen(void) {
     case S_ENDING:  draw_ending();  break;
     case S_FINALE:  draw_finale();  break;
     case S_SUMMARY: draw_summary(); break;
+    case S_WALK:    draw_walk();    break;
     default: break;
     }
     reveal = -1;
@@ -1108,6 +1269,10 @@ static void poll_keys(void) {
         else if (k == KEY_BACKSPACE) push(ctrl ? K_CTRL_W : K_BACKSPACE);
         else if (ctrl && k == KEY_W) push(K_CTRL_W);
         else if (ctrl && k == KEY_U) push(K_CTRL_U);
+        else if (k == KEY_UP)    push(K_UP);
+        else if (k == KEY_DOWN)  push(K_DOWN);
+        else if (k == KEY_LEFT)  push(K_LEFT);
+        else if (k == KEY_RIGHT) push(K_RIGHT);
         else if (k >= 32 && k <= 96) {}                 // printable: it came as a character
         else if (k >= KEY_LEFT_SHIFT && k <= KEY_KB_MENU) {}   // modifiers alone
         else push(K_OTHER);

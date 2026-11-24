@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include "game.h"
+#include "activity.h"
 #include "daily.h"
 #include "day.h"
 #include "match.h"
@@ -86,6 +87,80 @@ static void apply_effects(Run *run, const Effects *e, EffectsView *fx) {
 // Plays one event and returns its mark. The mark is never shown: the player
 // has to read it from the reaction. Style points and meter changes are shown.
 // The outcome's flags and meter changes are applied to the run.
+// After the answer of an activity scene: walk to the spot it named before the
+// time runs out. Returns 1 if the player got there.
+static int walk_to(const Event *e, const Choice *c, const char *answer, const Scene *scene) {
+    const Scenario *s = e->s;
+    Rng r = e->fate;
+    Walk w;
+    double start = now();
+    walk_start(&w, s->play, c->goal, &r, start);
+
+    char goal_name[32];
+    if (c->goal >= '1' && c->goal <= '9') snprintf(goal_name, sizeof goal_name, "aisle %c", c->goal);
+    else if (c->goal == 'k') snprintf(goal_name, sizeof goal_name, "the checkout");
+    else snprintf(goal_name, sizeof goal_name, "the spot");
+
+    WalkView v;
+    memset(&v, 0, sizeof v);
+    v.scene = *scene;
+    v.answer = answer;
+    v.goal_name = goal_name;
+    v.goal = c->goal;
+    v.w = w.w;
+    v.h = w.h;
+    v.rows = w.rows;
+    v.limit = s->play_time;
+    ui_flush();
+    int last_dx = 0;
+    while (1) {
+        double t = now();
+        double left = s->play_time - (t - start);
+        walk_tick(&w, t);
+        v.px = w.px; v.py = w.py; v.ppx = w.ppx; v.ppy = w.ppy; v.moved_at = w.moved_at;
+        v.ncarts = w.ncarts;
+        for (int i = 0; i < w.ncarts && i < 4; i++) {
+            v.cart_x[i] = w.carts[i].x;
+            v.cart_y[i] = w.carts[i].y;
+            v.cart_dx[i] = w.carts[i].dx;
+            v.cart_px[i] = w.carts[i].px;
+            v.cart_moved[i] = w.carts[i].moved_at;
+        }
+        v.bumped = t - w.bumped_at < 0.5;
+        v.left = left > 0 ? left : 0;
+        ui_walk(&v);
+        if (walk_arrived(&w)) return 1;
+        if (left <= 0) return 0;
+
+        int ch = ui_key(16);
+        int dx = 0, dy = 0;
+        switch (ch) {
+        case 'w': case 'W': case K_UP:    dy = -1; break;
+        case 's': case 'S': case K_DOWN:  dy = 1;  break;
+        case 'a': case 'A': case K_LEFT:  dx = -1; break;
+        case 'd': case 'D': case K_RIGHT: dx = 1;  break;
+        default: break;
+        }
+        int held = ui_held();
+        t = now();
+        if (held < 0) {                         // every key press is one step
+            if (dx || dy) walk_step(&w, dx, dy, t);
+            continue;
+        }
+        if (!dx && !dy && held) {               // keys held down: a step every WALK_STEP_S
+            int hx = !!(held & DIR_RIGHT) - !!(held & DIR_LEFT);
+            int hy = !!(held & DIR_DOWN) - !!(held & DIR_UP);
+            if (hx && hy) { if (last_dx) hx = 0; else hy = 0; }   // diagonals: take turns
+            dx = hx;
+            dy = hy;
+        }
+        if ((dx || dy) && t >= w.next_step) {
+            walk_step(&w, dx, dy, t);
+            last_dx = dx != 0;
+        }
+    }
+}
+
 static int play_event(Run *run, Event *e, int idx, int total) {
     const Scenario *s = e->s;
     const Variant  *v = e->v;
@@ -100,6 +175,8 @@ static int play_event(Run *run, Event *e, int idx, int total) {
     out.scene.phase = e->phase;
     out.scene.title = s->title;
     out.scene.detail = v->detail;
+    out.scene.stage = s->stage;
+    out.scene.props = v->props;
 
     PromptView pv;
     memset(&pv, 0, sizeof pv);
@@ -131,6 +208,7 @@ static int play_event(Run *run, Event *e, int idx, int total) {
             out.typed = NULL;
             out.text = v->timeout_text;
             out.fate = fate ? fate->result : NULL;
+            out.scene.show = fate && fate->show ? fate->show : v->timeout_show;
             ui_outcome(&out);
             wait_key();
             return fate ? fate->mark : v->timeout_mark;
@@ -197,11 +275,34 @@ static int play_event(Run *run, Event *e, int idx, int total) {
             record_word_day(run->date.iso);
         }
         st->style += pts + bonus;
+
+        // an activity scene: the answer only says where to go; now get there
+        if (s->play >= 0 && !walk_to(e, c, input, &pv.scene)) {
+            st->timeouts++;
+            apply_sets(&run->flags, &v->timeout_sets);
+            apply_effects(run, &v->timeout_fx, &out.fx);
+            update_hud(run);
+            out.typed = input;
+            out.text = v->timeout_text;
+            out.scene.show = v->timeout_show;
+            out.rank = style_rank(pts);
+            out.points = pts;
+            out.typo = m.typo;
+            out.repeated = before >= 0.5;
+            out.word_bonus = bonus != 0;
+            out.word_again = m.word && !bonus;
+            out.seconds = elapsed;
+            ui_outcome(&out);
+            wait_key();
+            return v->timeout_mark;
+        }
+
         apply_sets(&run->flags, &c->sets);
         apply_effects(run, &c->fx, &out.fx);
         update_hud(run);
 
         out.typed = input;
+        out.scene.show = c->show;
         out.text = c->result;
         out.fate = NULL;
         out.rank = style_rank(pts);

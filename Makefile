@@ -6,21 +6,24 @@ CFLAGS  = -Wall -Wextra -O2 -MMD -MP
 RAYLIB_CFLAGS ?= $(shell pkg-config --cflags raylib 2>/dev/null)
 RAYLIB_LIBS   ?= $(shell pkg-config --libs raylib 2>/dev/null || echo -lraylib -lGL -lm -lpthread -ldl -lrt -lX11)
 
-# everything except the two screen backends
-CORE    = $(filter-out src/ui_tty.c src/ui_gl.c, $(wildcard src/*.c))
+# everything except the screen backends: the terminal one, and the window one
+# (ui_gl.c and its helpers, every src/*_gl.c)
+GL      = $(wildcard src/*_gl.c)
+CORE    = $(filter-out src/ui_tty.c $(GL), $(wildcard src/*.c))
 CORE_O  = $(CORE:src/%.c=build/%.o)
+GL_O    = $(GL:src/%.c=build/%.o)
 
 all: game game-tty
 
 # the game in a window (raylib)
-game: $(CORE_O) build/ui_gl.o
+game: $(CORE_O) $(GL_O)
 	$(CC) $(CFLAGS) -o $@ $^ $(RAYLIB_LIBS)
 
 # the same game in a terminal (ncurses): for development and the tests
 game-tty: $(CORE_O) build/ui_tty.o
 	$(CC) $(CFLAGS) -o $@ $^ -lncurses
 
-build/ui_gl.o: src/ui_gl.c | build
+build/%_gl.o: src/%_gl.c | build
 	$(CC) $(CFLAGS) $(RAYLIB_CFLAGS) -c -o $@ $<
 
 build/%.o: src/%.c | build

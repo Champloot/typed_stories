@@ -113,6 +113,9 @@ def parse_pack(path, lex):
         elif k == "if": var()["cond"] = cond(v)
         elif k == "variant": newvar(norm_ws(v) or None)
         elif k == "on_timeout": var()["mode"] = v
+        elif k == "play": cur["play"] = v
+        elif k == "goal": var()["choices"][-1]["goal"] = v[-1] if v.startswith("aisle") else "k"
+        elif k in ("stage", "props", "show"): pass
         elif k == "weight": var()
         elif k == "sets": outcome(var())[0].extend(x.strip() for x in v.split(","))
         elif k == "effects":
@@ -216,7 +219,7 @@ class Game:
             fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
             os.chdir(PROJ); os.environ.update(TERM="xterm", HOME=home, TYPED_STORIES_DATE=date)
             for k in ("XDG_DATA_HOME", "LINES", "COLUMNS"): os.environ.pop(k, None)
-            os.execv(os.path.join(PROJ, "game-tty"), ["./game-tty"])
+            os.execv(os.path.join(PROJ, "game-tty"), ["./game-tty", PACKS])
         self.pump(0.5)
     def pump(self, w):
         end = time.time() + w
@@ -411,6 +414,10 @@ def play_run(g, world, packfile, key, strategy, today=False, log=False):
         inp_line = next((l for l in g.lines() if l.startswith("    > ")), "")
         chk(inp_line.strip() == "> " + typed + "_", f"{tag}: input line {inp_line!r}")
         g.send(b"\n"); g.pump(0.45)
+        if "GET TO" in g.text():            # an activity: walk to the spot the answer named
+            chk(sc.get("play") is not None, f"{tag}: a walk in a scene without 'play:'")
+            if not walk(g, c.get("goal")): probs.append(f"{tag}: could not walk to {c.get('goal')!r}"); break
+            g.pump(0.4)
         L = g.lines()
         mm, used, _ = match_answer(v, normalize(typed), word)
         if not mm or mm[0] != target: probs.append(f"{tag}: model says {typed!r} -> {mm}"); break
@@ -474,6 +481,32 @@ def play_run(g, world, packfile, key, strategy, today=False, log=False):
     g.send(b" "); g.pump(0.4)
     chk("choose who you are today" in g.text(), "did not return to the menu")
     return probs, dict(seen=seen, rating=rating, score=score, ended=ended, avg=avg, flags=flags, finale=finale_seen)
+
+def walk(g, goal):
+    """Walks the terminal map to the goal: a fresh shortest path around shelves
+    and carts after every step, one key press per step."""
+    from collections import deque
+    for _ in range(200):
+        L = g.lines()
+        if "GET TO" not in " ".join(L): return True
+        rows = [(j, l[4:]) for j, l in enumerate(L) if l[4:5] == "#" and set(l[4:].rstrip()) <= set("# .0123456789Kkic@")]
+        grid = [r for _, r in rows]
+        me = next(((x, y) for y, r in enumerate(grid) for x, ch in enumerate(r) if ch == "@"), None)
+        if me is None: return False
+        prev = {me: None}; q = deque([me]); end = None
+        while q:
+            x, y = q.popleft()
+            if grid[y][x] == goal and (x, y) != me: end = (x, y); break
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = x + dx, y + dy
+                if 0 <= ny < len(grid) and 0 <= nx < len(grid[ny]) and grid[ny][nx] not in "#Kic" and (nx, ny) not in prev:
+                    prev[(nx, ny)] = (x, y); q.append((nx, ny))
+        if end is None: g.pump(0.1); continue          # a cart in the way: wait
+        step = end
+        while prev[step] != me: step = prev[step]
+        key = {(1, 0): b"d", (-1, 0): b"a", (0, 1): b"s", (0, -1): b"w"}[(step[0] - me[0], step[1] - me[1])]
+        g.send(key); g.pump(0.03)
+    return False
 
 def strategy(kind):
     techs = ["fancy", "plain", "typo", "backspace", "huh", "ctrlw", "shout", "word", "sentence", "timeout"]
