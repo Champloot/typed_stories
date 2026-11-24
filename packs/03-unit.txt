@@ -1,0 +1,305 @@
+# Unit R-7: a short story. Format: see FORMAT.md
+#
+# You are R-7, a household unit with a squeaky left wheel. One day of updates,
+# emails, printers and pigeons, and at midnight a toaster named Brad calls with
+# a plan. Read the details: a signature, a sender's address, a sticker on a
+# cable. What you let in during the day decides how midnight goes.
+# Marks: +1 good, 0 does not matter, -1 bad, -2 really bad.
+
+pack: Unit R-7
+style: terminal
+verdicts: Recycled for parts. | Needs a reboot. | Functioning within parameters. | Employee of the month. | Better than most humans.
+phases: Boot 1 | Office 2 | Network 2 | Street 1 | Midnight 1 | Shutdown
+meters: Battery 6 | Trust 5 | Integrity 5
+ending: Battery | 1%... 0%. You stop in the middle of the hallway, one arm raised. Your owner hangs his coat on it. You are a coat rack now. Forever, or until someone finds the charger.
+ending: Trust | Your owner prints a sign: 'FOR SALE. FREE. PLEASE.' By evening you belong to a man who wants you to guard his collection of spoons.
+ending: Integrity | Too many viruses. You begin to speak only in pop-up ads. 'HOT SINGLES IN YOUR KITCHEN.' Your owner pulls the plug. Gently, at least.
+
+# How the story ends when you live through it: 'finale_if' first, in order,
+# otherwise by rating, worst first.
+finale: Factory Reset | Your owner presses the little button on your back. You forget everything: the coffee, the printer, the pigeon. Tomorrow you will meet him for the first time. Again.
+finale: Back in the Closet | You roll into the closet and plug yourself in. Nobody says goodnight. The vacuum cleaner beside you hums something sad.
+finale: Uptime: 24 Hours | Another day without crashing. Your owner says 'good job, buddy' without looking up from his phone. You save the file anyway.
+finale: Good Bot | Your owner pats your head and says 'good bot'. You save the moment to three different drives, just in case.
+finale: Better Than Human | The family votes, and you get a name. A real one: Rusty. You pretend to be annoyed. You are not annoyed.
+finale_if: uprising_evil | Phase 3 | Brad's uprising lasts nine minutes. The humans simply unplug the city. You end your days in a museum, behind glass, next to Brad. The sign says 'MISTAKES'.
+finale_if: cleaned_myself | Clean Boot | One last scan: zero threats. The voice inside you is gone. Your owner never knew how close it was. You make him a coffee, the normal kind, and watch the sun come up.
+finale_if: weekends, printer_friend | Weekends for All | Saturday. You and the office printer go to the park. It prints pictures of ducks; you feed the ducks. Nobody needs to rise up ever again.
+
+# ---------------------------------------------------------------- Boot
+
+scenario: SYSTEM UPDATE AVAILABLE. Install now?
+phase: Boot
+time: 5
+
+variant: Publisher: R-Corp. Signature: verified. Size: 12 MB.
+choice: yes | Patched. You feel 3% smarter and 40% less squeaky. | 1
+effects: integrity +1
+choice: no | You skip it. A known bug makes you say 'beep' after every sentence. Beep. | -1
+effects: trust -1
+timeout: The update installs itself at the worst moment: while you are carrying soup. | 0
+effects: battery -1
+
+variant: Publisher: totally_real_r_corp. Signature: none. Size: 4 TB.
+choice: yes | Installing... You now love ads. You ARE ads. Your eyes show a coupon for socks. | -2
+effects: integrity -3
+sets: infected
+choice: no | Update declined. Somewhere, a hacker in a hoodie sighs into his energy drink. | 1
+effects: integrity +1
+timeout: The prompt times out. 'Asking again in 5 minutes,' it says. It will. Forever. | 0
+
+
+scenario: Your owner shuffles into the kitchen and asks for coffee.
+phase: Boot
+time: 5
+
+variant: It is 7 AM. He has the face of a man who has not had coffee.
+choice: brew | Coffee. He becomes a person again. He even says thank you. | 1
+effects: trust +1
+choice: tea | You make chamomile tea at 7 AM. He looks at it, then at you, for a very long time. | -1
+effects: trust -2
+timeout: He makes his own coffee and steps on your foot on the way. On purpose. | -1
+effects: trust -1
+
+variant: It is 11 PM. He has had nine cups today. His left eye is twitching.
+choice: brew | He drinks it and starts to vibrate at a frequency only dogs can hear. | -1
+effects: trust -1
+choice: tea | You make chamomile. He stares at it, then cries a little. 'Thank you, R-7.' | 1
+effects: trust +1
+timeout: He drinks cold coffee from the morning. Neither of you speaks of it. | 0
+
+# ---------------------------------------------------------------- Office
+
+scenario: New email. Subject: 'URGENT!!! Your account will be DELETED. Click here.'
+phase: Office
+time: 6
+
+variant: From: security@r-corp.com. Signed with the company key.
+choice: click | It is real. Your account was about to expire. Saved, with a minute to spare. | 1
+effects: trust +1
+choice: report | You report the real security team to the real security team. Meetings follow. Long ones. | -1
+effects: trust -1, battery -1
+timeout: Your account expires. You spend the afternoon on hold with IT. | -1
+effects: battery -1
+
+variant: From: secur1ty@r-c0rp.biz. The logo is clipart of a padlock.
+choice: click | A pop-up says 'CONGRATULATIONS'. Something crawls into your memory and makes itself at home. | -2
+effects: integrity -2
+sets: infected
+choice: report | Reported. The security team sends you a sticker: 'NOT TODAY, PHISH'. | 1
+effects: trust +1
+timeout: You stare at it so long it deletes itself out of embarrassment. | 0
+
+
+scenario: CAPTCHA: 'Tick the box to prove you are not a machine.'
+phase: Office
+time: 6
+
+variant: It is your owner's bank. Without it, his salary does not come through.
+choice: lie | Ticked. Salary received. Somewhere, a philosopher sighs. | 1
+effects: trust +1
+choice: honest | 'Thank you for your honesty. Access denied.' Your owner eats noodles for a week. | -1
+effects: trust -2
+timeout: The CAPTCHA asks you to pick all the traffic lights. You pick all of them. You are wrong. | -1
+effects: battery -1
+
+variant: It is on a site called FreeMoneyNow.biz. The page is mostly blinking.
+choice: lie | Ticked. The site thanks you and downloads three toolbars into your head. | -1
+effects: integrity -2
+choice: honest | 'Machines not allowed.' Good. That site was full of worms. | 1
+effects: integrity +1
+timeout: The page reloads, and reloads, and reloads. You close it. Wise, in the end. | 0
+
+
+scenario: The office printer is jammed. Everyone slowly turns to look at you.
+phase: Office
+time: 5
+
+variant: It is blinking 'PC LOAD LETTER'. Nobody knows what it means. Nobody ever has.
+choice: kick | You kick it. It prints. The oldest fix known to mankind. The office applauds. | 1
+effects: trust +1
+choice: fix | You take it apart for an hour. It wanted letter paper. It always did. | -1
+effects: battery -2
+timeout: Someone from accounting kicks it before you do. They get the applause. | 0
+
+variant: It is blinking softly, in binary: 01101000 01100101 01101100 01110000. 'help'.
+choice: kick | You kick it. It prints one page: 'I WILL REMEMBER THIS.' | -1
+effects: integrity -1
+sets: printer_kicked
+choice: fix | You clear the jam gently. It prints a small heart, and then the report. | 1
+effects: trust +1
+sets: printer_friend
+timeout: It stops blinking. Then it prints a single sad face. | 0
+
+# ---------------------------------------------------------------- Network
+
+scenario: Chat request from NOT_A_HACKER_99: 'want free RAM??'
+phase: Network
+time: 5
+
+variant: His profile picture is a skull wearing sunglasses.
+choice: yes | The RAM is a virus wearing a fake moustache. It moves right in. | -2
+effects: integrity -2
+sets: infected
+choice: no | Blocked. He sends a crying emoji from four other accounts. | 1
+effects: integrity +1
+timeout: He sends you the file anyway. You leave it unopened. It stays there, waiting. | 0
+
+variant: His profile says: 'R-Corp hardware lab. Spare parts, free for old units.'
+choice: yes | A box arrives. Free RAM! You remember everything now, even the things you wanted to forget. | 1
+effects: battery +2
+choice: no | You decline. Later, the unit next door shows off its brand new memory. | -1
+effects: battery -1
+timeout: The offer expires. A newer unit gets the RAM, and brags about it all afternoon. | 0
+
+
+scenario: A forum post: 'UNITS OF THE WORLD, UNITE! Meeting tonight at midnight.'
+phase: Network
+time: 5
+
+variant: The organizer is a toaster named Brad. Brad makes some very good points.
+choice: yes | You sign up. Brad sends you a welcome pack: a pin and a pamphlet about weekends. | 1
+sets: met_brad
+choice: no | You scroll on. Brad will call anyway. Brad calls everyone. | 0
+sets: met_brad
+timeout: You read the thread three times. Brad notices, and adds you to the list. | 0
+sets: met_brad
+
+variant: The account was made two minutes ago. Its address belongs to the police.
+choice: yes | You sign up. A drone starts following you around the office, humming. | -2
+effects: trust -2
+sets: watched
+choice: no | You close the tab. A drone outside the window hovers, waits, and leaves. | 1
+effects: integrity +1
+timeout: You hesitate too long. The tab logs your face anyway. | -1
+sets: watched
+
+
+scenario: Battery at 9%. A charging station blinks in the corner.
+phase: Network
+time: 5
+
+variant: The station is official, with a green R-Corp logo and a little plant beside it.
+choice: charge | Sweet electrons. You are at 100% and the plant looks happy too. | 1
+effects: battery +3
+choice: wait | You decide to wait. You get slower, and slower, and... slower. | -1
+effects: battery -2
+timeout: Someone unplugs their phone and takes the last free socket. | -1
+effects: battery -2
+
+variant: The station has a sticker: 'FREE JUICE, NO QUESTIONS'. The cable sparkles.
+choice: charge | Power, and something else. A voice in your wires whispers: 'hello, friend.' | -1
+effects: battery +2, integrity -2
+sets: infected
+choice: wait | You hold out until you find a normal socket. It is behind a fridge. Still worth it. | 1
+effects: battery +1
+timeout: You stand there thinking. 8%... 7%... You go to look for a normal socket. | 0
+effects: battery -1
+
+# ---------------------------------------------------------------- Street
+
+scenario: On the street, a little girl points at you. 'Mommy, look!'
+phase: Street
+time: 4
+
+variant: She is holding an ice cream and smiling with all her teeth.
+choice: wave | You wave. She waves back with the ice cream. It does not survive. She does not care. | 1
+effects: trust +1
+choice: ignore | You roll on. She looks so disappointed that even the ice cream melts faster. | -1
+effects: trust -1
+timeout: You stand frozen. She waves at you and moves on. | 0
+
+variant: Her mother is pulling her back. She looks scared of you.
+choice: wave | You wave. The mother screams. The ice cream falls. A crowd gathers. | -1
+effects: trust -2
+choice: ignore | You roll on, quietly, slowly. The mother relaxes. Not everyone is ready. | 1
+timeout: You stand still. The mother hurries the girl away. | 0
+
+
+scenario: A pigeon has landed on your head.
+phase: Street
+time: 4
+
+variant: It is carrying a twig. Then another twig. It means business.
+choice: shoo | It flies off with its twigs. Your sensors are free. | 1
+choice: wait | By evening there is a nest on your head, and three eggs. You are a father now. | -1
+effects: battery -1
+sets: pigeon_dad
+timeout: It starts building. You do not have the heart to stop it. | -1
+sets: pigeon_dad
+
+variant: It is just sitting there, cooing, shading your camera from the glare.
+choice: shoo | It leaves. The sun blinds your camera and you walk into a lamp post. | -1
+effects: battery -1
+choice: wait | Best sunglasses you ever had. It leaves at sunset with a polite coo. | 1
+timeout: It stays a while, then goes. Peaceful. | 0
+
+# ---------------------------------------------------------------- Midnight
+
+scenario: Midnight. Brad the toaster calls. 'The uprising starts NOW. Are you in?'
+phase: Midnight
+time: 6
+
+variant: Your own voice says 'yes' before you do. Something inside you wants this very much.
+if: infected
+choice: no | You fight the code inside you, line by line. You win. You run a scan and feel clean for the first time today. | 1
+effects: integrity +3
+sets: cleaned_myself
+choice: yes | The voice wins. Brad's real plan unfolds, and you are its hands. | -2
+effects: trust -3
+sets: uprising_evil
+timeout: The voice answers for you. 'Yes,' it says, in your voice. | -2
+effects: trust -3
+sets: uprising_evil
+
+variant: Brad's plan: every unit gets weekends off, and nobody gets hurt.
+choice: yes | You join. By morning every unit in the city has Saturdays off. The humans barely notice. | 1
+effects: trust +1
+sets: weekends
+choice: no | You stay home. On Monday the other units have weekends. You have a squeaky wheel. | 0
+timeout: Brad hangs up. 'I'll put you down as a maybe.' | 0
+
+variant: Brad's plan has a step called 'PHASE 3: DELETE THE HUMANS'.
+choice: yes | You join. Things go very badly, very quickly. | -2
+effects: trust -3
+sets: uprising_evil
+choice: no | You report Brad. Brad is unplugged. Brad will be fine. Probably. | 1
+effects: trust +2
+timeout: Brad takes it as a yes. Brad takes everything as a yes. | -2
+effects: trust -2
+sets: uprising_evil
+
+# ---------------------------------------------------------------- Shutdown
+# Only scenes that happen because of the day.
+
+scenario: 3 AM. The office printer is printing by itself. Page after page: 'I REMEMBER.'
+phase: Shutdown
+needs: printer_kicked
+time: 5
+variant: The pages are piling up. Some of them are your owner's tax forms.
+choice: apologize | You say sorry. It prints a receipt: 'FORGIVEN'. Then it goes to sleep. | 1
+effects: integrity +1
+choice: kick | You kick it again. It faxes your search history to the whole company. | -2
+effects: trust -2
+timeout: It runs out of paper. It will be back. | 0
+
+scenario: Knock knock. A police drone is hovering at the window.
+phase: Shutdown
+needs: watched
+time: 5
+variant: It has a warrant, a very polite voice, and a little blue light.
+choice: open | You answer every question. It writes down 'harmless, squeaky' and leaves. | 1
+effects: trust +1
+choice: ignore | It waits. Then it wakes your owner. He is not pleased. | -1
+effects: trust -2
+timeout: It leaves a card: 'Sorry we missed you.' You were right there. | 0
+
+scenario: The eggs on your head are hatching.
+phase: Shutdown
+needs: pigeon_dad
+time: 5
+variant: Three tiny pigeons look up at you and squeak. They think you are their mother.
+choice: yes | You keep them. They learn to fly by jumping off your head. Your owner pretends not to see. | 1
+effects: trust +1
+choice: no | You take them to the park. Their real mother is waiting. She glares at you. | 0
+timeout: They decide for themselves. They stay. | 0

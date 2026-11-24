@@ -10,6 +10,7 @@
 
 extern Pack *packs;
 extern int npacks;
+extern const char *const pack_styles[];   // allowed values of 'style:', NULL-terminated; the first is the default
 
 int cond_holds(const Cond *c, uint64_t flags);
 void apply_sets(uint64_t *flags, const FlagSet *fs);

@@ -282,6 +282,26 @@ void ui_ending(const EndingView *v) {
     refresh();
 }
 
+// The terminal has one look for every pack.
+void ui_set_theme(const char *style) { (void)style; }
+
+void ui_finale(const FinaleView *v) {
+    char line[200], up[160];
+    erase();
+    draw_status();
+    upcase(up, sizeof up, v->title);
+    snprintf(line, sizeof line, "THE END: %s", up);
+    int pair = v->special ? C_WARN : v->good == 2 ? C_OK : v->good == 0 ? C_BAD : 0;
+    if (pair) attron(COLOR_PAIR(pair));
+    attron(A_BOLD);
+    int r = 3 + print_wrapped(3, 4, line) + 1;
+    attroff(A_BOLD);
+    if (pair) attroff(COLOR_PAIR(pair));
+    r += print_wrapped(r, 4, v->text);
+    mvprintw(r + 1, 4, "(press any key)");
+    refresh();
+}
+
 void ui_summary(const SummaryView *v) {
     erase();
     draw_status();

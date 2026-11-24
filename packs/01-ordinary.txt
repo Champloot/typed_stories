@@ -15,6 +15,17 @@ meters: Nerves 7 | Money 5 | People 5
 ending: Nerves | You snap. You go home, pull the blanket over your head and refuse to be an adult until tomorrow.
 ending: Money | Your card is declined. Again. You walk home and have cereal for dinner. Without milk.
 ending: People | Nobody answers your messages anymore. Not your friends. Not even Mom. Especially not Mom.
+style: abstract
+
+# How the day ends when you live through it: 'finale_if' first, in order,
+# otherwise by rating, worst first.
+finale: Lights Out | You lie in the dark and replay every single thing that happened. The ceiling has seen this before. Tomorrow is another day. It has to be.
+finale: Survived | You made it to the end of the day. Not with style, but you made it, and the kettle still works.
+finale: Just a Day | Nothing exploded. Nothing sparkled. You brush your teeth, set the alarm, and the day files itself away under 'fine'.
+finale: A Good One | You fall asleep fast, for once. Somewhere a neighbor is humming. The day was kind to you, and you were kind to it.
+finale: Legend of the Block | Tomorrow the neighbors will talk about you, in a good way. You sleep like a cat on a radiator.
+finale_if: dog_poisoned, milk_burned | Smells Like Today | The flat smells of burnt milk. The vet's bill is on the table. The dog sleeps it off on your feet. He has forgiven you. The milk never will.
+finale_if: tuba_buddy, good_sausage | Block Party | At nine the neighbor knocks, tuba in hand. You bring the sausages. By ten the whole floor is in the corridor, eating and dancing to the worst polka ever played. Best night of the year.
 
 # ---------------------------------------------------------------- Morning
 

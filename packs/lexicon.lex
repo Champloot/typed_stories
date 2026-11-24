@@ -12,14 +12,16 @@
 intent: yes
 hint: agree
 1: yes | yeah | yea | yep | yup | ya | y | ok | okay | sure
-2: of course | sure thing | why not | yes please | alright | all right | please | go on | sounds good | fine
+2: aye | of course | sure thing | why not | yes please | alright | all right | please | go on | sounds good | fine
 3: absolutely | certainly | by all means | I would be delighted | that would be lovely | most kind | much obliged | splendid | indubitably | with pleasure | gladly
+3: verily | forsooth | it shall be done | I accept, my liege | affirmative | acknowledged
 
 intent: no
 hint: refuse
 1: no | nope | nah | n
+2: nay | negative
 2: no thanks | no thank you | not really | I'm good | not today | pass | I will pass | I'll pass | nope nope
-3: thanks but no thanks | I must politely decline | I shall decline | not on your life | absolutely not | I think not | over my dead body | thank you kindly, but no
+3: nay, my liege | I think not, sire | request denied | thanks but no thanks | I must politely decline | I shall decline | not on your life | absolutely not | I think not | over my dead body | thank you kindly, but no
 
 intent: wait
 hint: wait
@@ -286,3 +288,121 @@ hint: pretend to sleep
 1: sleep | shh | snore | zzz
 2: I'm asleep | nobody home | lights off
 3: I am but a dream | play dead | the house is empty
+
+# ---------------------------------------------------------------- the knight
+
+intent: fight
+hint: fight
+1: fight | attack | strike | stab | slash | sword
+2: draw my sword | have at you | en garde | to arms | fight me
+3: smite thee | for the king | have at thee, knave | taste my steel | by my blade
+
+intent: talk
+hint: talk
+1: talk | speak | chat | hello | hi
+2: let's talk | can we talk | parley | how are you | what's wrong
+3: let us parley | pray, speak | tell me your sorrows | words, not swords | I come in peace
+
+intent: flee
+hint: retreat
+1: flee | run | run away | retreat | escape
+2: tactical retreat | fall back | back off | I'm out
+3: discretion is the better part of valor | live to fight another day | brave sir robin
+
+intent: share
+hint: share your bread
+1: share | here | take it | bread | have some
+2: here you go | take some bread | have my bread | share my bread
+3: break bread | what's mine is yours | a crust for a friend | charity
+
+intent: help
+hint: help it
+1: help | help it | thorn
+2: pull the thorn | let me help | easy now | good boy
+3: let me see that paw | fear not | hold still, friend
+
+intent: drink
+hint: have a drink
+1: drink | cheers | bottoms up | gulp
+2: one please | pour me one | I'll drink | to your health
+3: down the hatch | skol | fill my tankard | hail and drink
+
+intent: swim
+hint: swim across
+1: swim | wade | swim across | walk
+2: I'll swim | across | through the water | jump in
+3: I fear no river | like a fish | the river is my friend
+
+intent: toll
+hint: pay the toll
+1: pay | coin | toll | gold
+2: pay the toll | take a coin | here is a coin | take my gold | fine, here
+3: a coin for your trouble | keep the change | fair is fair
+
+intent: bow
+hint: bow
+1: bow | kneel | bow down
+2: I bow | my lord | your majesty | I remember
+3: I remember you, wise one | at your service | your humble servant
+
+# ---------------------------------------------------------------- unit R-7
+
+intent: brew
+hint: make coffee
+1: coffee | brew | make coffee | yes
+2: one coffee coming up | brewing | espresso | double shot | on it
+3: initiating caffeine protocol | your fuel, sir | black as my circuits
+
+intent: tea
+hint: make tea instead
+1: tea | no | no coffee | tea instead
+2: make tea | chamomile | have some tea | not tonight
+3: sleep protocol engaged | herbal intervention | you need rest, human
+
+intent: click
+hint: click the link
+1: click | click it | open | open it | link
+2: let's see | check it | click the link | follow the link
+3: what could go wrong | curiosity | I trust the internet
+
+intent: report
+hint: report it
+1: report | spam | delete | block
+2: report it | mark as spam | report as phishing | delete it | nice try
+3: forward to security | not today, scammer | phishing detected
+
+intent: lie
+hint: tick the box
+1: tick | tick it | yes | lie | click
+2: tick the box | I am human | I am not a machine | totally human | just a human
+3: I bleed and I cry | as human as they come | my favorite food is food
+
+intent: honest
+hint: tell the truth
+1: no | truth | honest | the truth
+2: tell the truth | be honest | I am a machine | I am a bot | beep boop
+3: I cannot lie | honesty is my protocol | my circuits do not lie
+
+intent: fix
+hint: fix it
+1: fix | fix it | repair | open it
+2: let me fix it | clear the jam | debug | take a look
+3: diagnostics mode | gently, gently | I speak printer
+
+intent: charge
+hint: plug in
+1: charge | plug in | plug | power | yes
+2: plug me in | recharge | top up | juice
+3: sweet, sweet electrons | feed me volts | ah, power
+
+intent: wave
+hint: wave
+1: wave | hi | hello | wave back
+2: hello there | good morning | waving | say hi
+3: greetings, small human | have a nice day, citizen | beep beep, friend
+
+intent: shoo
+hint: shoo it
+1: shoo | go away | away | scram
+2: shoo shoo | off you go | get off | fly away
+3: begone, foul bird | not on my sensors | evacuate my head

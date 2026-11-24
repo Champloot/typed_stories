@@ -243,6 +243,17 @@ bad("effects_overflow", M.replace("effects: money -1", "effects: money -1, money
 # --- built-in flags
 bad("sets_builtin", F.replace("sets: said_yes", "sets: wordsmith"), "'wordsmith' is set by the game itself, packs can only check it")
 bad("sets_builtin_today", F.replace("sets: said_yes", "sets: today"), "'today' is set by the game itself")
+# --- style and finales
+FN = F + "finale: Bad | It went badly.\nfinale: Good | It went well.\n"
+bad("style_unknown", "style: baroque\n" + V, "01-t.txt:1: 'style' must be 'abstract', 'ornate' or 'terminal'")
+bad("style_twice", "style: ornate\nstyle: terminal\n" + V, "01-t.txt:2: second 'style' line")
+bad("finale_no_text", V + "finale: Title\n", "'finale' is: title | how the story ends")
+bad("finale_empty_title", V + "finale:  | text\n", "'finale' is: title | how the story ends")
+bad("finale_too_many", V + "".join(f"finale: t{i} | x\n" for i in range(9)), "at most 8 'finale' lines")
+bad("finale_if_fields", FN + "finale_if: said_yes | Title\n", "'finale_if' is: flags | title | how the story ends")
+bad("finale_if_unset_flag", FN + "finale_if: dragon_friend | Pals | Bakery.\n", "flag 'dragon_friend' is checked here, but no outcome sets it")
+bad("finale_if_alone", F + "finale_if: said_yes | Yes | You said yes.\n", "'finale_if' needs at least one plain 'finale'")
+bad("finale_if_too_many", FN + "".join(f"finale_if: said_yes | t{i} | x\n" for i in range(9)), "at most 8 'finale_if' lines")
 # --- words.lst
 def wordbad(name, words, expect):
     bad(name, None, expect, files={"01-t.txt": V, "words.lst": words})
@@ -254,6 +265,7 @@ wordbad("word_in_answers", "hedgehog\nyes\n", "words.lst:2: 'yes' is part of an 
 import subprocess as sp
 for nm, files in (("meters_valid", {"01-t.txt": M}),
                   ("needs_builtin_valid", {"01-t.txt": F.replace("needs: said_yes", "needs: wordsmith or today")}),
+                  ("finales_valid", {"01-t.txt": "style: terminal\n" + FN + "finale_if: said_yes or today | Yes | You said yes.\n"}),
                   ("words_valid", {"01-t.txt": V, "words.lst": "# fine\nhedgehog\nnarwhal\n"})):
     try:
         run(nm, files); ok = False

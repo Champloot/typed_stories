@@ -36,6 +36,7 @@ typedef struct {
 
 typedef struct {
     const char *name;
+    const char *style;          // the pack's look, so the menu can hint at it
     int         best, today;    // scores, -1 if there is no record
 } MenuPack;
 
@@ -93,6 +94,13 @@ typedef struct {
 } EndingView;
 
 typedef struct {
+    const char *title;
+    const char *text;
+    int         special;        // a flag ending (finale_if), not one picked by rating
+    int         good;           // 0 bad, 1 middling, 2 good: by where the rating fell
+} FinaleView;
+
+typedef struct {
     const char *pack;
     int         ended_early;
     int         rating;         // 0..10
@@ -117,7 +125,9 @@ void ui_intro(const Scene *s);
 void ui_prompt(const PromptView *v);
 void ui_outcome(const OutcomeView *v);
 void ui_ending(const EndingView *v);
+void ui_finale(const FinaleView *v);    // how the story ends, when the day was lived through
 void ui_summary(const SummaryView *v);
+void ui_set_theme(const char *style);   // a pack's 'style:'; NULL is the menu's look
 int  ui_key(int timeout_ms);    // waits for a key (forever if timeout_ms < 0); K_NONE on timeout
 void ui_flush(void);            // forget keys pressed ahead
 

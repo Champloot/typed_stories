@@ -8,6 +8,7 @@ word of the day, rating, score and records.
     python3 tests/play_test.py decay          knight three times: repeated words pay less
     python3 tests/play_test.py narrow         a mixed day in a 40-column terminal
     python3 tests/play_test.py consequences   many days: unlocked scenes, conditional variants, early endings
+    python3 tests/play_test.py stories        every story for several days: finales and early endings
     python3 tests/play_test.py today          Today mode gives the same day for the same date
     python3 tests/play_test.py secret         5 days with the word of the day unlock the secret scene
 
@@ -74,7 +75,7 @@ def cond(v):
     return [[(lit.strip().lstrip("!").strip(), lit.strip().startswith("!")) for lit in clause.split(" or ")] for clause in v.split(",")]
 
 def parse_pack(path, lex):
-    pk = dict(name=None, verdicts=[], phases=[], scen=[], meters=[], endings={})
+    pk = dict(name=None, verdicts=[], phases=[], scen=[], meters=[], endings={}, finales=[], finale_if=[])
     cur = None
     def newvar(detail=None):
         cur["variants"].append(dict(detail=detail, choices=[], timeout=None, mode="text", tsets=[], tfx=[], cond=None, last=None))
@@ -97,6 +98,12 @@ def parse_pack(path, lex):
         elif k == "ending":
             m, text = [x.strip() for x in v.split("|", 1)]
             pk["endings"][m.lower()] = norm_ws(text)
+        elif k == "finale":
+            t, text = [x.strip() for x in v.split("|", 1)]
+            pk["finales"].append((norm_ws(t), norm_ws(text)))
+        elif k == "finale_if":
+            c, t, text = [x.strip() for x in v.split("|", 2)]
+            pk["finale_if"].append((cond(c), norm_ws(t), norm_ws(text)))
         elif k == "scenario":
             cur = dict(title=norm_ws(v), time=0, phase=None, slot="any", variants=[], needs=None); pk["scen"].append(cur)
         elif k == "time": cur["time"] = float(v)
@@ -295,6 +302,7 @@ def play_run(g, world, packfile, key, strategy, today=False, log=False):
             chk(not any(s["phase"] == ph and scen_open(s, flags) for s in pk["scen"]), f"phase {name} skipped but had open scenes")
 
     i = 0
+    finale_seen = None
     while True:
         L = g.lines(); T = g.text()
         if "RUN COMPLETE" in T or "DAY OVER EARLY" in T: break
@@ -303,6 +311,16 @@ def play_run(g, world, packfile, key, strategy, today=False, log=False):
             if ended is not None:
                 mname = pk["meters"][ended][0]
                 chk(f"{mname.upper()} HIT ZERO" in T and pk["endings"][mname.lower()] in T, f"wrong ending screen {T[:120]!r}")
+            g.send(b" "); g.pump(0.4); continue
+        if "THE END:" in T:
+            chk(ended is None, "a finale after the day ended early")
+            span, got = st["best"] - st["worst"], st["marks"] - st["worst"]
+            exp = next(((t, x) for c, t, x in pk["finale_if"] if holds(c, flags)), None)
+            if exp is None:
+                n = len(pk["finales"])
+                exp = pk["finales"][min(n - 1, max(0, got * n // span)) if span > 0 else n - 1]
+            chk(f"THE END: {exp[0].upper()}" in T and exp[1] in T, f"finale: expected {exp[0]!r}, screen {T[:160]!r}")
+            finale_seen = exp[0]
             g.send(b" "); g.pump(0.4); continue
         if "Press Enter when ready" not in T: probs.append(f"#{i}: unexpected screen {T[:120]!r}"); break
         chk(ended is None, "the day went on after a meter hit zero")
@@ -418,6 +436,7 @@ def play_run(g, world, packfile, key, strategy, today=False, log=False):
         g.send(b" "); g.pump(0.35); i += 1
 
     # end of the day
+    chk((finale_seen is not None) == (ended is None and bool(pk["finales"])), f"finale shown: {finale_seen!r}, ended early: {ended is not None}")
     if pk["phases"] and ended is None:
         if cur_phase: check_phase(cur_phase, snap, seen_in_phase)
         skipped(len(phase_names))
@@ -454,7 +473,7 @@ def play_run(g, world, packfile, key, strategy, today=False, log=False):
         chk(f"Today: best {world.day[(DATE, pk['name'])]}" in T, "today line")
     g.send(b" "); g.pump(0.4)
     chk("choose who you are today" in g.text(), "did not return to the menu")
-    return probs, dict(seen=seen, rating=rating, score=score, ended=ended, avg=avg, flags=flags)
+    return probs, dict(seen=seen, rating=rating, score=score, ended=ended, avg=avg, flags=flags, finale=finale_seen)
 
 def strategy(kind):
     techs = ["fancy", "plain", "typo", "backspace", "huh", "ctrlw", "shout", "word", "sentence", "timeout"]
@@ -583,11 +602,25 @@ def main(mode, home):
         print(f"  secret scene shown: {secret in {t for t, _ in info['seen']}}")
         if secret not in {t for t, _ in info["seen"]}: allp.append("the secret scene did not appear after 5 word days")
         g.quit(); allp += check_files(home, w)
+    elif mode == "stories":
+        # every story, many days: finales by rating and by flags, early endings
+        for pf, key in (("01-ordinary.txt", "1"), ("02-knight.txt", "2"), ("03-unit.txt", "3")):
+            pk = parse_pack(f"{PACKS}/{pf}", parse_lex(f"{PACKS}/lexicon.lex"))
+            h = os.path.join(home, key); os.makedirs(h)      # its own style and records
+            w = World(); g = Game(h); finales, endings = [], []
+            for n, kind in enumerate(["best-fancy", "worst-plain", "mixed", "best-plain", "mixed", "worst-fancy", "mixed", "best-fancy"]):
+                info = run(g, w, pf, key, kind, f"{pk['name']} day {n + 1}: {kind}")
+                if info["finale"]: finales.append(info["finale"])
+                if info["ended"] is not None: endings.append(pk["meters"][info["ended"]][0])
+                if kind.startswith("best") and info["ended"] is not None: allp.append(f"{pf} day {n + 1}: a best day ended early")
+            g.quit()
+            print(f"  {pk['name']}: finales {finales}, early endings {endings or 'none'}")
+            if not finales: allp.append(f"{pf}: no finale in 8 days")
     print("PROBLEMS:", allp if allp else "none")
     return allp
 
 if __name__ == "__main__":
-    modes = sys.argv[1:] or ["days", "decay", "narrow", "consequences", "today", "secret"]
+    modes = sys.argv[1:] or ["days", "decay", "narrow", "consequences", "today", "secret", "stories"]
     failed = []
     for mode in modes:
         home = tempfile.mkdtemp(prefix="typed_stories_play_")

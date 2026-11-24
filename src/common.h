@@ -27,6 +27,8 @@
 #define METER_START   5     // default start value
 #define MAX_EFFECTS   4     // meters one outcome can change
 #define WORD_BONUS    100   // style for the first answer with the word of the day
+#define MAX_FINALES     8       // story endings by rating, worst -> best
+#define MAX_FINALE_IF   8       // special endings chosen by flags
 #define WORDSMITH_DAYS 5    // days with the word of the day that unlock the 'wordsmith' flag
 
 /* Flags are what the day remembers: an outcome sets them ('sets:'), and later
@@ -135,6 +137,14 @@ typedef struct {
     int       meter_start[MAX_METERS];
     char     *meter_endings[MAX_METERS];// what happens when the meter hits 0
     int       nmeters;
+    char     *style;                    // look of the window: "abstract", "ornate", "terminal"
+    char     *finale_title[MAX_FINALES];// the story's ending when the day is lived through, by rating
+    char     *finale_text[MAX_FINALES];
+    int       nfinales;
+    Cond      finale_if[MAX_FINALE_IF]; // special endings, the first whose flags hold wins
+    char     *finale_if_title[MAX_FINALE_IF];
+    char     *finale_if_text[MAX_FINALE_IF];
+    int       nfinale_if;
 } Pack;
 
 #endif

@@ -1,53 +1,314 @@
-# Format: see FORMAT.md
-# Not reworked yet: one variant per scenario, no phases. Marks: +1 good, 0 neutral, -1 bad.
-pack: Knight
-verdicts: Dragon-food. | Peasant with a sword. | Worthy knight. | Bard will sing about you.
+# The knight: a short story. Format: see FORMAT.md
+#
+# The king sends you after the dragon of the Grey Hills. Along the road the
+# details decide: a beggar's eyes, a troll's crown, a wolf's paw. What you did
+# on the road comes back at the lair and at the castle afterwards, and the
+# story ends one of several ways (see the 'finale' lines).
+# Marks: +1 good, 0 does not matter, -1 bad, -2 really bad.
 
-scenario: The king asks: accept the quest?
-slot: first
-time: 4
-timeout: The king takes silence as a yes. You are going to fetch potatoes.
-choice: yes | Quest accepted. It is to fetch potatoes.
-choice: no | King: 'Cool. Dungeon then.' | -1
+pack: The Knight
+style: ornate
+verdicts: Dragon-food. | Peasant with a sword. | Worthy knight. | The bards will sing of you.
+phases: Castle 1 | Road 2 | Tavern 1 | Forest 2 | Lair 1 | Homecoming
+meters: Honor 5 | Gold 5 | Health 6
+ending: Honor | The heralds stop saying your name. Then the stable boy does. You hand in your spurs and become a turnip farmer. The turnips do not judge.
+ending: Gold | You sell your horse, then your sword, then your boots. A knight with no boots is just a man in a tin hat. You walk home.
+ending: Health | You lie down under an oak "just for a moment". A passing monk takes you to the abbey. You will be fine. The quest will not.
 
-scenario: The tavern is full: order a drink
-time: 4
-timeout: You get water. In a wooden cup. Shameful.
-choice: ale | Ale arrives. It is mostly foam.
-choice: mead | Mead arrives. You feel fancy for exactly one sip. | 1
+# How the story ends when you live through it. The 'finale_if' lines are
+# checked first, in order; otherwise the rating picks one, worst first.
+finale: Keeper of the Potatoes | You come back with no dragon, no gold and half a cape. The king gives you a new post: guarding the royal potatoes. You guard them well. Nobody steals a single one.
+finale: A Modest Return | You come back alive, which surprises the court. A statue is commissioned in your honor. It is very small, and the pigeons love it.
+finale: Hero of the Realm | Bells ring as you ride in. The princess smiles, the king pays in full, and the jester writes a joke about you that is actually funny.
+finale: A Legend | They sing of you in every tavern from here to the sea. Most of the songs are even true. Children play at being you, and the dragon plays along.
+finale_if: dragon_friend | The Dragon Bakery | You ride home on the dragon. The king faints. A month later 'Ember & Sir' opens in the square: the dragon bakes, you sell. The bread is always warm, and nobody ever robs the place.
+finale_if: mocked_troll, bard_follows | The Ballad of the Small Troll | The bard saw everything. Now every child in the kingdom sings about the knight who beat a troll in a paper crown. You grow a beard and move to the mountains. The song gets there first.
+finale_if: dragon_reads, fed_hermit | The Library Under the Hill | The dragon opens the realm's first library, and the old beggar with the starry beard becomes its keeper. Late books are fined one sheep a week. You get a card for life, and a quiet seat by the warm wall.
 
-scenario: Guard at the gate: password?
+# ---------------------------------------------------------------- Castle
+
+scenario: The king offers you a quest: slay the dragon of the Grey Hills.
+phase: Castle
 time: 5
-timeout: Guard: wrong. Also, who are you?
-choice: for the king | Gate opens. Guard sniffs: smells like ale.
 
-scenario: A merchant sells a suspicious potion
+variant: The princess squeezes your hand. 'Come back,' she whispers.
+choice: yes | You kneel. The court cheers. A lady faints, on purpose. | 1
+effects: honor +1
+choice: no | The princess slaps you. Politely, but firmly. You go anyway. | -1
+effects: honor -2
+timeout: The king takes your silence for a yes. Everyone else takes it for fear. | 0
+effects: honor -1
+
+variant: Behind his back, the king has his fingers crossed. The jester has seen it too.
+choice: yes | Quest accepted. The reward, it turns out, is 'eternal gratitude'. No refunds. | -1
+effects: gold -1
+choice: no | 'Clever,' says the jester. The king doubles the reward to get you on the road. | 1
+effects: gold +2
+timeout: You think about it so long that the king forgets what he offered. So do you. | 0
+
+
+scenario: The royal armourer offers you a helmet for the road.
+phase: Castle
 time: 5
-on_timeout: random
-timeout: You stare at the potion. The potion stares back. Fate decides.
-choice: no thank you | Potion declined. Your liver thanks you.
-choice: how much | Three gold. It tastes like regret. | -1
 
-scenario: A heretic jumps out of the bushes
+variant: It is battered, and has a dent shaped exactly like a dragon's tooth.
+choice: buy | 'It has met one before,' says the armourer, 'and won.' You pay gladly. | 1
+effects: gold -1
+sets: lucky_helmet
+choice: no | You keep your own helmet. It has never met anything. | 0
+timeout: The armourer sells it to a squire while you think. The squire looks very proud. | 0
+
+variant: It is shiny, very cheap, and smells strongly of cheese.
+choice: buy | It is made of cheese. A mouse follows you out of the castle. | -1
+effects: gold -1, honor -1
+choice: no | 'Suit yourself,' says the armourer, and takes a bite of it. | 1
+timeout: The armourer eats the helmet while you think. That answers that. | 0
+
+# ---------------------------------------------------------------- Road
+
+scenario: A beggar by the road asks for a bit of your bread.
+phase: Road
 time: 5
-timeout: The heretic steals your horse.
-choice: smite thee | Smitten. The bush is on fire.
-choice: begone | Heretic bows politely and leaves. The bush is fine. Boring. | -1
 
-scenario: A bridge troll blocks the way
-time: 9
-timeout: Troll charges a toll. Of 3 gold. And your dignity.
-choice: thou shalt not pass | Troll steps aside, impressed by your grammar.
+variant: His hands are dirty, but his eyes twinkle like the night sky.
+choice: share | He eats slowly and says, 'We shall meet again, sir knight.' His beard sparkles. | 1
+effects: health -1, honor +1
+sets: fed_hermit
+choice: no | He shrugs. A small grey cloud follows you for the rest of the day. | -1
+effects: health -1
+timeout: You ride past. When you look back, there is nobody by the road. Only a single star in daylight. | -1
 
-scenario: A fork in the road
+variant: He keeps one hand under his cloak. You hear a knife being sharpened.
+choice: share | He takes the bread. Then your purse. Then he says 'thanks' and is gone. | -1
+effects: gold -2
+choice: no | He curses you in three languages and runs off into the reeds. | 1
+timeout: While you hesitate he cuts your purse strings. Neatly, too. | -1
+effects: gold -1
+
+
+scenario: A bridge troll blocks the way. 'Toll,' he says.
+phase: Road
+time: 6
+
+variant: He is huge. His club has notches. Many notches.
+choice: fight | You wake up under the bridge. The troll has kept your boots, as a souvenir. | -2
+effects: health -3
+choice: toll | He bites the coin, nods, and lets you pass. A fair troll. | 1
+effects: gold -1
+choice: talk | He listens, nods, then charges you the toll anyway. Plus a fee for the talking. | -1
+effects: gold -2
+timeout: He charges you the toll and a fee for wasting his afternoon. | -1
+effects: gold -2
+
+variant: He is tiny. He wears a paper crown. His lower lip trembles.
+choice: fight | You defeat a very small troll. Children boo you from the riverbank. | -2
+effects: honor -2
+sets: mocked_troll
+choice: toll | You pay him. He bursts into tears of joy. It is his first coin ever. | 0
+effects: gold -1, honor +1
+choice: talk | He tells you about his day. It was a bad day. You become friends, and he waves you across. | 1
+sets: troll_friend
+timeout: He gets tired of waiting and waves you across. 'Bye,' he says, sadly. | 0
+
+
+scenario: A fork in the road.
+phase: Road
 time: 4
-timeout: Your horse picks straight ahead. Into a swamp. Of course.
-choice: left | Left: a cozy inn. Free soup. | 1
-choice: right | Right: a nice view. And a cliff. Mostly cliff.
 
-scenario: A dragon inhales deeply
-slot: last
-time: 3.5
-timeout: Your eyebrows are gone.
-choice: parry | Clang! The dragon is offended. | 1
-choice: run | You run. The dragon is faster. Eyebrows gone, dignity gone. | -2
+variant: On the left, crows are circling. On the right, smoke rises from a chimney.
+choice: left | Crows. Crows everywhere. One of them steals your cheese. | -1
+effects: health -1
+choice: right | A farmer's wife feeds you pie. Pie! The horse gets an apple. | 1
+effects: health +1
+timeout: Your horse decides for you. Straight ahead. Into a swamp. | -1
+effects: health -1
+
+variant: The left sign says 'DRAGON'. The right sign says 'DEFINITELY NOT DRAGON'. The paint is fresh.
+choice: left | An honest road for an honest knight. It even has a view. | 1
+effects: honor +1
+choice: right | A goblin swapped the signs. You ride in circles until supper. | -1
+effects: health -1
+timeout: You stare at the signs until a goblin sells you a map. It is a drawing of a duck. | -1
+effects: gold -1
+
+# ---------------------------------------------------------------- Tavern
+
+scenario: The innkeeper offers you a drink, on the house.
+phase: Tavern
+time: 5
+
+variant: The ale is golden. The whole room smells of roast pork.
+choice: drink | Ale, pork, a song by the fire. You sleep like a baby. A baby in armor. | 1
+effects: health +2
+choice: no | You drink water and go to bed early. Downstairs, everyone is having the best night of their lives. | 0
+timeout: The innkeeper drinks it himself. 'Your loss,' he says, and means it. | 0
+
+variant: The drink is green and smoking. A sign over the bar says 'DRAGON COURAGE'.
+choice: drink | You hiccup flames for the rest of the night. Useful? Time will tell. | -1
+effects: health -1
+sets: fire_hiccups
+choice: no | Wise. A man at the next table drinks it and now his eyebrows are on the ceiling. | 1
+timeout: The drink burns a hole in the table while you think. | 0
+
+
+scenario: A bard asks if he may follow you and make a song of your quest.
+phase: Tavern
+time: 5
+
+variant: He has a lute and a very sincere face.
+choice: yes | He follows you, humming. Every deed you do, he writes down. Even the good ones. | 1
+effects: honor +1
+sets: bard_follows
+choice: no | He looks sad, and writes a song about a knight who said no. It is quite catchy. | 0
+timeout: He takes your silence as a yes and follows you anyway. | 0
+sets: bard_follows
+
+variant: His last song was 'Sir Dennis Who Fell Off His Horse'. Sir Dennis is in the corner, crying.
+choice: yes | He follows you, giggling. He is already rhyming your name with 'smelly'. | -1
+effects: honor -1
+sets: bard_follows
+choice: no | 'Fine,' says the bard. Sir Dennis buys you a drink, and thanks you with his eyes. | 1
+effects: health +1
+timeout: He takes your silence as a yes. Sir Dennis shakes his head slowly. | -1
+sets: bard_follows
+
+# ---------------------------------------------------------------- Forest
+
+scenario: A wolf steps out onto the path.
+phase: Forest
+time: 5
+
+variant: It is growling, ears flat, fangs out.
+choice: fight | You drive it off. It keeps a piece of your cape, as a warning. | 1
+effects: health -1
+choice: help | You reach out to pet it. It reaches out too. With its teeth. | -2
+effects: health -2
+timeout: It bites your horse. Your horse bites it back. Nobody wins. | -1
+effects: health -1
+
+variant: It is limping. A big thorn is stuck in its paw.
+choice: fight | You strike a limping wolf. Even the trees seem to look away. | -2
+effects: honor -2
+choice: help | You pull out the thorn. The wolf licks your hand and follows you, wagging. | 1
+sets: wolf_friend
+timeout: The wolf limps away into the trees, looking back at you once. | 0
+
+
+scenario: A witch at a cauldron offers to read your future.
+phase: Forest
+time: 5
+
+variant: Her black cat is purring and rubbing against your boots.
+choice: yes | She stares into the steam. 'The dragon is lonely,' she says. 'Remember that.' | 1
+sets: knows_lonely
+choice: no | 'Your loss, dearie.' The cat looks disappointed in you. | 0
+timeout: The cauldron boils over and the vision is lost. The cat sighs. | 0
+
+variant: Her black cat is hissing at you, back arched.
+choice: yes | She reads your future: warts. Then she gives you the warts. | -1
+effects: honor -1, health -1
+choice: no | You back away slowly. The cat keeps hissing until you are out of sight. | 1
+timeout: The cat scratches your horse. The witch cackles. | -1
+effects: health -1
+
+
+scenario: A river. A ferryman holds out his bony hand.
+phase: Forest
+time: 5
+
+variant: The water is calm, clear, and only knee-deep.
+choice: swim | You wade across. Your boots are now two small ponds. Free fish. | 1
+choice: toll | He charges three gold for a knee-deep river. A very fine robbery. | -1
+effects: gold -2
+timeout: You wait so long the ferryman falls asleep. You wade across anyway. | 0
+
+variant: The water is fast and foaming. A whole tree rushes past.
+choice: swim | You go in. You come out a mile downstream, minus your dignity and one boot. | -2
+effects: health -3
+choice: toll | One gold, a dry crossing, and a song from the ferryman. It is about death, but it is catchy. | 1
+effects: gold -1
+timeout: The ferryman shrugs and rows away. You find a bridge two hours later. | -1
+effects: health -1
+
+# ---------------------------------------------------------------- Lair
+
+scenario: The dragon's lair. A huge golden eye opens in the dark.
+phase: Lair
+time: 6
+
+variant: You hiccup. A tiny flame comes out. The dragon's eye goes very wide.
+if: fire_hiccups
+choice: talk | 'You... speak Fire?' The dragon has not had anyone to talk to in three hundred years. You hiccup, it laughs, and the cave fills with warm smoke. | 1
+effects: honor +1
+sets: dragon_friend
+choice: fight | You attack mid-hiccup. It is not a good look. The dragon swats you out of the cave. | -2
+effects: health -3
+choice: flee | You run, hiccuping. The dragon follows you to the door, curious, then sighs. | -1
+effects: honor -1
+timeout: You hiccup again. The dragon hiccups back. Then it gets bored and goes to sleep. | 0
+
+variant: It sighs. The sigh is long, and deep, and very, very lonely.
+if: knows_lonely
+choice: talk | You sit down. You talk. The dragon cries a little. You cry a little. Then you play cards until dawn. | 1
+effects: honor +1
+sets: dragon_friend
+choice: fight | You strike a sad dragon. It does not even fight back. The bard, if there is one, puts away his lute. | -2
+effects: honor -3
+choice: flee | You leave it alone with its sigh. It will be sighing all night. | -1
+timeout: You stand there. The dragon sighs again, and turns its back to you. | 0
+
+variant: Smoke curls from its nostrils. Its tail is lashing. The floor is warm.
+choice: fight | A long, loud, terrible fight. You win. Barely. Your eyebrows do not. | 1
+effects: honor +2, health -2
+choice: talk | It is not in the mood for talking. It is in the mood for toasting. You are the toast. | -2
+effects: health -3
+choice: flee | You run. The dragon lets you, which is somehow worse. | -1
+effects: honor -2
+timeout: It roars. You are blown out of the cave and into a bush. A thorny one. | -2
+effects: health -2
+
+variant: It is wearing tiny reading glasses. There are books everywhere.
+choice: fight | You charge at a reader. Books burn. You feel like a barbarian, because you are one. | -2
+effects: honor -2
+choice: talk | You talk about books for six hours. It promises to stop eating sheep. Mostly. | 1
+effects: honor +1
+sets: dragon_reads
+choice: flee | You tiptoe out. 'Shh,' says the dragon, without looking up. | 0
+timeout: It turns a page. It does not even notice you. You leave, a little hurt. | 0
+
+# ---------------------------------------------------------------- Homecoming
+# Only scenes that happen because of the road.
+
+scenario: The castle guards point their spears at the wolf behind you.
+phase: Homecoming
+needs: wolf_friend
+time: 5
+variant: The captain looks nervous, not angry. The wolf wags its tail at him.
+choice: talk | 'He is with me.' The captain laughs, the wolf gets a ribbon, and the kitchen gets a new friend. | 1
+effects: honor +1
+choice: fight | You draw on your own guards, in front of the whole court. The wolf looks embarrassed for you. | -2
+effects: honor -2
+timeout: The wolf licks the captain's hand. Problem solved, no thanks to you. | 0
+
+scenario: The beggar from the road walks into the throne room. His beard is made of stars.
+phase: Homecoming
+needs: fed_hermit
+time: 5
+variant: 'Do you remember me, sir knight?' The whole court has gone quiet.
+choice: bow | He blesses your sword. From now on it glows softly whenever soup is near. | 1
+effects: honor +1, health +2
+choice: no | 'Pity,' he says, and turns you into a duck. Only for an hour. It is a long hour. | -1
+effects: honor -1
+timeout: He smiles, taps your nose and disappears. The court looks at you in awe. | 0
+effects: honor +1
+
+scenario: The tiny troll from the bridge is at the castle gate, holding a flower.
+phase: Homecoming
+needs: troll_friend
+time: 5
+variant: 'For the princess,' he whispers. 'From both of us.'
+choice: yes | You bring him in. The princess loves the flower and the troll. He is a royal gardener by spring. | 1
+effects: honor +1
+choice: no | You send him away. He leaves the flower by the gate. It is still there a week later. | -1
+effects: honor -1
+timeout: The princess sees him from the window and runs down herself. | 0

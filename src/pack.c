@@ -23,6 +23,8 @@ static int is_builtin_flag(const char *name) {
     return 0;
 }
 
+const char *const pack_styles[] = { "abstract", "ornate", "terminal", NULL };
+
 int pack_flag(const Pack *pk, const char *name) {
     for (int i = 0; i < pk->nflags; i++)
         if (!strcmp(pk->flags[i], name)) return i;
@@ -259,6 +261,30 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
             if (m < 0) die_at(path, lineno, "no meter '%s' (declare it in 'meters:' first)", parts[0]);
             if (pk->meter_endings[m]) die_at(path, lineno, "second 'ending' for meter '%s'", parts[0]);
             pk->meter_endings[m] = xstrdup(parts[1]);
+        } else if (!strcmp(key, "style")) {
+            if (pk->style) die_at(path, lineno, "second 'style' line");
+            int ok = 0;
+            for (int i = 0; pack_styles[i]; i++) ok |= !strcmp(val, pack_styles[i]);
+            if (!ok) die_at(path, lineno, "'style' must be 'abstract', 'ornate' or 'terminal'");
+            pk->style = xstrdup(val);
+        } else if (!strcmp(key, "finale")) {
+            char *parts[3];
+            int n = split_on(val, '|', parts, 2);
+            if (n != 2 || !*parts[0] || !*parts[1]) die_at(path, lineno, "'finale' is: title | how the story ends");
+            if (pk->nfinales == MAX_FINALES) die_at(path, lineno, "at most %d 'finale' lines", MAX_FINALES);
+            pk->finale_title[pk->nfinales] = xstrdup(parts[0]);
+            pk->finale_text[pk->nfinales] = xstrdup(parts[1]);
+            pk->nfinales++;
+        } else if (!strcmp(key, "finale_if")) {
+            char *parts[4];
+            int n = split_on(val, '|', parts, 3);
+            if (n != 3 || !*parts[0] || !*parts[1] || !*parts[2])
+                die_at(path, lineno, "'finale_if' is: flags | title | how the story ends");
+            if (pk->nfinale_if == MAX_FINALE_IF) die_at(path, lineno, "at most %d 'finale_if' lines", MAX_FINALE_IF);
+            parse_cond(path, lineno, pk, parts[0], &pk->finale_if[pk->nfinale_if]);
+            pk->finale_if_title[pk->nfinale_if] = xstrdup(parts[1]);
+            pk->finale_if_text[pk->nfinale_if] = xstrdup(parts[2]);
+            pk->nfinale_if++;
         } else if (!strcmp(key, "scenario")) {
             if (cur) check_scenario(path, cur);
             if (!*val) die_at(path, lineno, "empty scenario title");
@@ -397,6 +423,10 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
     for (int i = 0; i < pk->nflags; i++)
         if (pk->flag_checked[i] && !pk->flag_is_set[i] && !is_builtin_flag(pk->flags[i]))
             die_at(path, pk->flag_checked[i], "flag '%s' is checked here, but no outcome sets it", pk->flags[i]);
+
+    if (!pk->style) pk->style = xstrdup(pack_styles[0]);
+    if (pk->nfinale_if && !pk->nfinales)
+        die_at(path, lineno, "'finale_if' needs at least one plain 'finale' for the days its flags don't match");
 
     for (int m = 0; m < pk->nmeters; m++)
         if (!pk->meter_endings[m])

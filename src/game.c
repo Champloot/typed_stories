@@ -239,6 +239,39 @@ static void show_ending(const Run *run) {
     wait_key();
 }
 
+// Where the run's marks fall between the worst and the best possible run,
+// as one of n steps: 0 for the worst, n-1 for the best.
+static int marks_step(const Run *run, int n) {
+    const Stats *st = &run->st;
+    int span = st->best - st->worst, got = st->marks - st->worst;
+    int i = span > 0 ? got * n / span : n - 1;
+    if (i >= n) i = n - 1;
+    if (i < 0) i = 0;
+    return i;
+}
+
+// The first special finale whose flags hold, otherwise the one for the rating.
+static void show_finale(const Run *run) {
+    const Pack *p = run->p;
+    if (!p->nfinales) return;
+    FinaleView v;
+    memset(&v, 0, sizeof v);
+    v.good = marks_step(run, 3);
+    for (int i = 0; i < p->nfinale_if && !v.title; i++)
+        if (cond_holds(&p->finale_if[i], run->flags)) {
+            v.title = p->finale_if_title[i];
+            v.text = p->finale_if_text[i];
+            v.special = 1;
+        }
+    if (!v.title) {
+        int i = marks_step(run, p->nfinales);
+        v.title = p->finale_title[i];
+        v.text = p->finale_text[i];
+    }
+    ui_finale(&v);
+    wait_key();
+}
+
 // Rating scales the run's marks between the worst and the best possible run,
 // in integer math so the boundaries are exact. Score adds style and what is
 // left of the meters, and goes into the records.
@@ -249,10 +282,7 @@ static void show_summary(const Run *run, int events) {
     memset(&v, 0, sizeof v);
     int span = st->best - st->worst, got = st->marks - st->worst;
     v.rating = span > 0 ? (got * 20 + span) / (2 * span) : 10;
-    int vi = span > 0 ? got * p->nverdicts / span : p->nverdicts - 1;
-    if (vi >= p->nverdicts) vi = p->nverdicts - 1;
-    if (vi < 0) vi = 0;
-    v.verdict = p->verdicts[vi];
+    v.verdict = p->verdicts[marks_step(run, p->nverdicts)];
     v.accuracy = st->typed ? 100.0 * (st->typed - st->erased) / st->typed : 100.0;
     v.wpm = st->typing_time > 0 ? (st->sent / 5.0) / (st->typing_time / 60.0) : 0;
     v.style_avg = events ? (st->style + events / 2) / events : 0;
@@ -292,6 +322,7 @@ int choose_pack(void) {
             const Result *b = record_best(packs[i].name);
             const Result *t = record_day(d.iso, packs[i].name);
             v.packs[i].name = packs[i].name;
+            v.packs[i].style = packs[i].style;
             v.packs[i].best = b ? b->score : -1;
             v.packs[i].today = t ? t->score : -1;
         }
@@ -328,6 +359,7 @@ void run_pack(const Pack *p) {
     if (f >= 0 && today_mode) run.flags |= (uint64_t)1 << f;
 
     style_new_run();
+    ui_set_theme(p->style);
     update_hud(&run);
     show_day_start(&run);
 
@@ -356,7 +388,9 @@ void run_pack(const Pack *p) {
     }
     free(order);
     if (run.ended >= 0) show_ending(&run);
+    else show_finale(&run);
     style_save();
     show_summary(&run, played);
     ui_set_hud(NULL);
+    ui_set_theme(NULL);
 }
