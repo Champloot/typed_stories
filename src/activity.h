@@ -5,11 +5,12 @@
 #ifndef ACTIVITY_H
 #define ACTIVITY_H
 
+#include "config.h"
 #include "rng.h"
 
 #define WALK_MAX_CARTS 4
-#define WALK_STEP_S    0.11     // seconds per cell while a direction is held
-#define CART_STEP_S    0.30     // seconds per cell for a cart
+#define WALK_STEP_S    (cfg.grid_step)  // seconds per cell while a direction is held (config.ini)
+#define CART_STEP_S    (cfg.cart_step)  // seconds per cell for a cart
 
 /* Map cells:
      '#'  wall or shelf          'K'  checkout counter      'i'  info stand

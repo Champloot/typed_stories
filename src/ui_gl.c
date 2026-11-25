@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include <math.h>
 
+#include "config.h"
 #include "raylib.h"
 #include "rng.h"
 #include "ui.h"
@@ -17,7 +18,7 @@
 #include "stage_gl.h"
 
 #define FONT_PX  64             // glyphs are rasterized once at this size and scaled down
-#define FADE_S   0.18           // fade-in of a new screen
+#define FADE_S   (cfg.fade)     // fade-in of a new screen (config.ini)
 #define SHAKE_S  0.35           // how long the input shakes (or glitches) after a miss
 
 /* ---------- themes ---------- */
@@ -1510,9 +1511,10 @@ static const char *const font_files[F_COUNT] = {
 void ui_init(void) {
     SetTraceLogLevel(LOG_WARNING);
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
-    InitWindow(1280, 800, "typed_stories");
+    InitWindow(cfg.width, cfg.height, "typed_stories");
     SetWindowMinSize(800, 500);
-    SetExitKey(KEY_NULL);           // Esc is a key like any other, not "quit"
+    SetExitKey(KEY_NULL);
+    if (cfg.fullscreen) ToggleBorderlessWindowed();           // Esc is a key like any other, not "quit"
     SetTargetFPS(60);
     for (int i = 0; i < F_COUNT; i++) fonts[i] = load_font(font_files[i]);
     Image noise = GenImagePerlinNoise(512, 512, 0, 0, 6.0f);

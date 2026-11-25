@@ -1,4 +1,5 @@
 // style: style points and phrase heat, kept between runs
+#include "config.h"
 #include "style.h"
 #include "util.h"
 
@@ -58,13 +59,13 @@ void style_save(void) {
 }
 
 void style_new_run(void) {
-    for (int i = 0; i < nheats; i++) heats[i].heat *= 0.5;
+    for (int i = 0; i < nheats; i++) heats[i].heat *= cfg.heat_decay;
 }
 
 int style_points(int tier, int typo, double heat) {
-    static const int base[4] = { 0, 10, 30, 60 };
+    const int base[4] = { 0, cfg.tier1, cfg.tier2, cfg.tier3 };
     double p = base[tier] / (1.0 + heat);
-    if (typo) p *= 0.5;
+    if (typo) p *= cfg.typo_factor;
     return (int)(p + 0.5);
 }
 

@@ -59,7 +59,7 @@ raylib-win:
 
 dist-windows: game.exe
 	rm -rf dist/typed_stories && mkdir -p dist/typed_stories
-	cp -r game.exe packs assets README.md dist/typed_stories/
+	cp -r game.exe packs assets config.ini README.md dist/typed_stories/
 	cd dist && rm -f ../typed_stories-windows.zip && zip -qr ../typed_stories-windows.zip typed_stories
 
 .PHONY: windows raylib-win dist-windows

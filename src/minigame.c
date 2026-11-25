@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "config.h"
 #include "minigame.h"
 
 static const char *const names[MG_KINDS] = { "mash", "timing", "cross", "catch", "lyrics" };
@@ -29,7 +30,7 @@ static void fill_lane(Lane *l, Rng *r) {
         int car = rng_below(r, 2);
         l->cells[x] = car ? 'c' : 'b';
         if (car) l->cells[x + 1] = 'c';
-        x += (car ? 2 : 1) + 4 + rng_below(r, 4);
+        x += (car ? 2 : 1) + cfg.cross_gap + rng_below(r, 4);
     }
 }
 
@@ -43,14 +44,15 @@ void mg_start(Minigame *g, int kind, double limit, int n, const char *text, Rng 
     snprintf(g->text, sizeof g->text, "%s", text ? text : "");
     switch (kind) {
     case MG_MASH:
-        g->n = n > 0 ? n : 12;
+        g->n = (int)((n > 0 ? n : 12) * cfg.mash_presses + 0.5);
+        if (g->n < 1) g->n = 1;
         break;
     case MG_TIMING: {
         g->n = g->tries = n > 0 ? n : 2;
-        g->period = 2.0;           // one second per sweep
+        g->period = 2 * cfg.timing_sweep;
         double c = 0.3 + 0.4 * rng_below(r, 100) / 100.0;
-        g->zone_lo = c - 0.1;
-        g->zone_hi = c + 0.1;
+        g->zone_lo = c - cfg.timing_zone / 2;
+        g->zone_hi = c + cfg.timing_zone / 2;
         break;
     }
     case MG_CROSS:
@@ -61,23 +63,25 @@ void mg_start(Minigame *g, int kind, double limit, int n, const char *text, Rng 
         for (int y = 1; y < g->h - 1; y++) {
             Lane *l = &g->lanes[y];
             l->dir = rng_below(r, 2) ? 1 : -1;
-            l->step = 0.3 + 0.05 * rng_below(r, 4);
+            l->step = (0.3 + 0.05 * rng_below(r, 4)) / cfg.cross_speed;
             l->next = t + l->step;
             fill_lane(l, r);
             l->cells[g->px] = '.';          // never start with something on the first step
         }
         break;
     case MG_CATCH:
+        g->napples = cfg.catch_apples;
         g->n = n > 0 ? n : 4;
+        if (g->n > g->napples) g->n = g->napples;
         g->w = 9;
         g->h = 8;
         g->px = g->ppx = 4;
         g->py = g->ppy = g->h - 1;
-        g->fall_s = 0.2;
-        for (int i = 0; i < MG_APPLES; i++) {
+        g->fall_s = cfg.catch_fall;
+        for (int i = 0; i < g->napples; i++) {
             g->apples[i].x = rng_below(r, g->w);
             g->apples[i].y = -1;
-            g->apples[i].drop_at = t + 0.5 + i * 0.75;
+            g->apples[i].drop_at = t + 0.5 + i * cfg.catch_every;
         }
         break;
     default:
@@ -104,7 +108,7 @@ void mg_tick(Minigame *g, double t) {
             }
         }
     if (g->kind == MG_CATCH)
-        for (int i = 0; i < MG_APPLES; i++) {
+        for (int i = 0; i < g->napples; i++) {
             Apple *a = &g->apples[i];
             while (a->state == 0 && t >= a->drop_at) {
                 a->drop_at += g->fall_s;
@@ -113,7 +117,7 @@ void mg_tick(Minigame *g, double t) {
                 else if (a->y >= g->h) { a->state = 2; g->missed++; }
             }
             if (g->caught >= g->n) end(g, MG_WON, t);
-            if (g->missed > MG_APPLES - g->n) end(g, MG_LOST, t);
+            if (g->missed > g->napples - g->n) end(g, MG_LOST, t);
         }
     if (t - g->start >= g->limit) end(g, MG_LOST, t);
 }
@@ -189,7 +193,7 @@ double mg_progress(const Minigame *g, double t) {
 char mg_cell(const Minigame *g, int x, int y) {
     if (g->kind == MG_CROSS && y > 0 && y < g->h - 1) return g->lanes[y].cells[x];
     if (g->kind == MG_CATCH)
-        for (int i = 0; i < MG_APPLES; i++)
+        for (int i = 0; i < g->napples; i++)
             if (g->apples[i].state == 0 && g->apples[i].x == x && g->apples[i].y == y) return 'o';
     return '.';
 }

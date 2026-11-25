@@ -11,6 +11,7 @@
 #ifndef MINIGAME_H
 #define MINIGAME_H
 
+#include "config.h"
 #include "rng.h"
 
 enum { MG_MASH, MG_TIMING, MG_CROSS, MG_CATCH, MG_LYRICS, MG_KINDS };
@@ -18,8 +19,8 @@ enum { MG_GOING, MG_WON, MG_LOST };
 
 #define MG_W        15          // grid of cross and catch
 #define MG_H        9
-#define MG_STEP_S   0.12        // seconds per cell while a direction is held
-#define MG_APPLES   7           // apples that fall in 'catch'
+#define MG_STEP_S   (cfg.grid_step) // seconds per cell while a direction is held (config.ini)
+#define MG_APPLES   12          // at most this many apples fall in 'catch' (config.ini says how many)
 #define MG_TEXT     64
 
 typedef struct {
@@ -50,7 +51,7 @@ typedef struct {
     double moved_at, next_step;
     Lane   lanes[MG_H];
     Apple  apples[MG_APPLES];
-    int    caught, missed;
+    int    caught, missed, napples;
     double fall_s;
     // lyrics
     int    typed;

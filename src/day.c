@@ -1,4 +1,5 @@
 // day: building a day: phases, unlocked scenes, variants
+#include "config.h"
 #include "day.h"
 #include "pack.h"
 #include "util.h"
@@ -62,7 +63,7 @@ int build_phase(const Pack *p, int ph, uint64_t flags, int *out, uint64_t seed) 
     }
     Rng rng = rng_for(seed, RNG_PHASE, (unsigned)ph);
     rng_shuffle(&rng, pool, m);
-    int pick = p->phases[ph].pick, take = pick && pick < m ? pick : m;
+    int pick = cfg.scenes_per_phase ? cfg.scenes_per_phase : p->phases[ph].pick, take = pick && pick < m ? pick : m;
     for (int k = 0; k < take; k++) out[n++] = pool[k];
     for (int i = 0; i < p->count; i++) {
         const Scenario *s = &p->scen[i];
@@ -84,7 +85,7 @@ int planned_after(const Pack *p, int ph_from, uint64_t flags) {
             if (s->phase != ph || !scenario_open(s, flags)) continue;
             if (s->has_needs) u++; else m++;
         }
-        int pick = p->phases[ph].pick;
+        int pick = cfg.scenes_per_phase ? cfg.scenes_per_phase : p->phases[ph].pick;
         t += (pick && pick < m ? pick : m) + u;
     }
     return t;

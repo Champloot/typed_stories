@@ -222,12 +222,12 @@ class World:
 # ------------------------------------------------------------------ the terminal
 
 class Game:
-    def __init__(self, home, cols=80, rows=40, date=DATE):
+    def __init__(self, home, cols=80, rows=40, date=DATE, config="-"):
         self.screen = pyte.Screen(cols, rows); self.stream = pyte.ByteStream(self.screen); self.cols = cols
         self.pid, self.fd = pty.fork()
         if self.pid == 0:
             fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
-            os.chdir(PROJ); os.environ.update(TERM="xterm-color", HOME=home, TYPED_STORIES_DATE=date)
+            os.chdir(PROJ); os.environ.update(TERM="xterm-color", HOME=home, TYPED_STORIES_DATE=date, TYPED_STORIES_CONFIG=config)
             for k in ("XDG_DATA_HOME", "LINES", "COLUMNS"): os.environ.pop(k, None)
             os.execv(os.path.join(PROJ, "game-tty"), ["./game-tty", PACKS])
         self.pump(0.5)

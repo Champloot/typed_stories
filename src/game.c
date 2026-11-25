@@ -2,6 +2,7 @@
 // Knows nothing about the screen: it fills views from ui.h and reads keys.
 #include <time.h>
 
+#include "config.h"
 #include "game.h"
 #include "activity.h"
 #include "minigame.h"
@@ -110,12 +111,12 @@ static int walk_to(const Event *e, const Choice *c, const char *answer, const Sc
     v.w = w.w;
     v.h = w.h;
     v.rows = w.rows;
-    v.limit = s->play_time;
+    v.limit = s->play_time * cfg.walk_scale;
     ui_flush();
     int last_dx = 0;
     while (1) {
         double t = now();
-        double left = s->play_time - (t - start);
+        double left = v.limit - (t - start);
         walk_tick(&w, t);
         v.px = w.px; v.py = w.py; v.ppx = w.ppx; v.ppy = w.ppy; v.moved_at = w.moved_at;
         v.ncarts = w.ncarts;
@@ -166,7 +167,7 @@ static int play_minigame(const Event *e, const Choice *c, const Scene *scene) {
     Rng r = e->fate;
     Minigame g;
     double t0 = now();
-    mg_start(&g, c->act - 1, c->act_time, c->act_n, c->act_text, &r, t0);
+    mg_start(&g, c->act - 1, c->act_time * cfg.game_scale, c->act_n, c->act_text, &r, t0);
     MinigameView v;
     memset(&v, 0, sizeof v);
     v.scene = *scene;
@@ -267,16 +268,16 @@ static int play_event(Run *run, Event *e, int idx, int total) {
     for (int c = 0; c < v->nchoices; c++) pv.hints[c] = v->choices[c].label;
     pv.input = input;
     pv.msg = msg;
-    pv.limit = s->time_limit;
+    pv.limit = s->time_limit * cfg.answer_scale;
 
     ui_intro(&out.scene);
     wait_enter();
     double start = now();
 
     while (1) {
-        double left = s->time_limit - (now() - start);
+        double left = pv.limit - (now() - start);
         if (left <= 0) {
-            st->typing_time += s->time_limit;
+            st->typing_time += pv.limit;
             st->timeouts++;
             const Choice *fate = NULL;
             if (v->on_timeout == TO_RANDOM) fate = &v->choices[rng_below(&e->fate, v->nchoices)];
@@ -352,14 +353,14 @@ static int play_event(Run *run, Event *e, int idx, int total) {
         *heat += 1.0;
         int bonus = 0;
         if (m.word && !run->word_used) {
-            bonus = WORD_BONUS;
+            bonus = cfg.word_bonus;
             run->word_used = 1;
             record_word_day(run->date.iso);
         }
         st->style += pts + bonus;
 
         // a minigame after the answer: lose it, and the choice's 'fail:' happens
-        if (c->act && !play_minigame(e, c, &pv.scene)) {
+        if (c->act && cfg.minigames && !play_minigame(e, c, &pv.scene)) {
             int has = c->has_fail;
             apply_sets(&run->flags, has ? &c->fail_sets : &v->timeout_sets);
             apply_effects(run, has ? &c->fail_fx : &v->timeout_fx, &out.fx);
@@ -380,7 +381,7 @@ static int play_event(Run *run, Event *e, int idx, int total) {
         }
 
         // an activity scene: the answer only says where to go; now get there
-        if (s->play >= 0 && !walk_to(e, c, input, &pv.scene)) {
+        if (s->play >= 0 && cfg.walks && !walk_to(e, c, input, &pv.scene)) {
             st->timeouts++;
             apply_sets(&run->flags, &v->timeout_sets);
             apply_effects(run, &v->timeout_fx, &out.fx);
@@ -558,9 +559,9 @@ void run_pack(const Pack *p) {
     run.date = today();
     run.word = word_of_day(&run.date);
     run.seed = today_mode ? rng_mix(rng_hash(run.date.iso) ^ rng_mix(rng_hash(p->name))) : fresh_seed();
-    for (int m = 0; m < p->nmeters; m++) run.meters[m] = p->meter_start[m];
+    for (int m = 0; m < p->nmeters; m++) run.meters[m] = cfg.meter_start ? cfg.meter_start : p->meter_start[m];
     int f = pack_flag(p, FLAG_WORDSMITH);
-    if (f >= 0 && word_days() >= WORDSMITH_DAYS) run.flags |= (uint64_t)1 << f;
+    if (f >= 0 && word_days() >= cfg.wordsmith_days) run.flags |= (uint64_t)1 << f;
     f = pack_flag(p, FLAG_TODAY);
     if (f >= 0 && today_mode) run.flags |= (uint64_t)1 << f;
 

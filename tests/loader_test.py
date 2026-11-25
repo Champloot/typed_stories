@@ -8,6 +8,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAME = os.path.join(ROOT, "game-tty")
 S = tempfile.mkdtemp(prefix="typed_stories_loader_")
 os.environ["HOME"] = S          # never touch the real style/records files
+os.environ["TYPED_STORIES_CONFIG"] = "-"    # the defaults, whatever config.ini says
 
 V = """pack: T
 verdicts: a | b | c
@@ -195,6 +196,7 @@ for nm, txt in (("flags_valid", F.replace("needs: said_yes", "needs: said_yes or
         run(nm, {"01-t.txt": txt}); ok = False
     except sp.TimeoutExpired:
         ok = True
+    os.environ["TYPED_STORIES_CONFIG"] = "-"
     res.append(ok); print(("PASS " if ok else "FAIL ") + nm.ljust(24), "| loader accepted it")
 
 # a valid pack + lexicon must load (game then sits in the menu)
@@ -284,6 +286,20 @@ bad("lyrics_caps", AC.replace("act: mash 2.5 14 hold it!", "act: lyrics 5 Happy 
 bad("fail_without_act", V.replace("choice: yes | ok | 1\n", "choice: yes | ok | 1\nfail: oops\n"), "'fail' must come after a choice's 'act' line")
 bad("fail_twice", AC.replace("fail: dropped | -1", "fail: dropped | -1\nfail: again"), "second 'fail' for the same choice")
 bad("fail_bad_mark", AC.replace("dropped | -1", "dropped | lots"), "mark must be an integer")
+# --- config.ini
+def cfgbad(name, text, expect):
+    path = os.path.join(S, name + ".ini")
+    with open(path, "w") as f: f.write(text)
+    os.environ["TYPED_STORIES_CONFIG"] = path
+    bad(name, V, expect)
+    os.environ["TYPED_STORIES_CONFIG"] = "-"
+cfgbad("cfg_no_section", "answer_scale = 2\n", "cfg_no_section.ini:1: 'answer_scale' must be inside a [section]")
+cfgbad("cfg_bad_section", "[times]\n", "no section [times]")
+cfgbad("cfg_bad_key", "[time]\nanswer_scal = 2\n", "cfg_bad_key.ini:2: no setting 'answer_scal' in [time]")
+cfgbad("cfg_not_number", "[time]\nanswer_scale = fast\n", "'answer_scale' must be a number, got 'fast'")
+cfgbad("cfg_range", "[catch]\napples = 20\n", "'apples' must be from 1 to 12, got 20")
+cfgbad("cfg_whole", "[day]\nscenes_per_phase = 1.5\n", "'scenes_per_phase' must be a whole number")
+cfgbad("cfg_no_equals", "[day]\nminigames 0\n", "expected 'name = value'")
 # --- words.lst
 def wordbad(name, words, expect):
     bad(name, None, expect, files={"01-t.txt": V, "words.lst": words})
@@ -298,7 +314,9 @@ for nm, files in (("meters_valid", {"01-t.txt": M}),
                   ("stage_play_valid", {"01-t.txt": ST + "\nscenario: S2\ntime: 3\nplay: store 5\nchoice: yes | ok\ngoal: aisle1\ntimeout: late\n"}),
                   ("act_valid", {"01-t.txt": AC.replace("fail: dropped | -1\n", "fail: dropped | -1\nsets: dropped_it\nshow: close\n").replace("choice: no | meh\n", "choice: no | meh\nact: lyrics 5 la la la\n")}),
                   ("finales_valid", {"01-t.txt": "style: terminal\n" + FN + "finale_if: said_yes or today | Yes | You said yes.\n"}),
-                  ("words_valid", {"01-t.txt": V, "words.lst": "# fine\nhedgehog\nnarwhal\n"})):
+                  ("words_valid", {"01-t.txt": V, "words.lst": "# fine\nhedgehog\nnarwhal\n"}),
+                  ("config_valid", {"01-t.txt": V})):
+    if nm == "config_valid": os.environ["TYPED_STORIES_CONFIG"] = os.path.join(ROOT, "config.ini")
     try:
         run(nm, files); ok = False
     except sp.TimeoutExpired:

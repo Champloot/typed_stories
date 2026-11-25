@@ -1,5 +1,6 @@
 #include <string.h>
 
+#include "config.h"
 #include "activity.h"
 
 /* ---------- maps ---------- */
@@ -93,7 +94,7 @@ void walk_start(Walk *w, int act, char goal, Rng *r, double t) {
     w->moved_at = t - 1;
     w->goal = goal;
     w->bumped_at = -10;
-    for (int i = 0; i < a->ncarts; i++) {
+    for (int i = 0; i < a->ncarts && i < cfg.carts; i++) {
         Cart *c = &w->carts[w->ncarts];
         c->y = a->carts[i].y;
         c->dx = a->carts[i].dx;
