@@ -4,18 +4,36 @@
 #include <stdarg.h>
 #include <sys/stat.h>
 #include <time.h>
+#ifdef _WIN32
+#include <direct.h>     // _mkdir
+#include <windows.h>    // QueryPerformanceCounter
+#endif
 
 #include "util.h"
 
 double now(void) {
+#ifdef _WIN32
+    static LARGE_INTEGER freq;
+    LARGE_INTEGER c;
+    if (!freq.QuadPart) QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&c);
+    return (double)c.QuadPart / (double)freq.QuadPart;
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+#endif
 }
 
-// $XDG_DATA_HOME/typed_stories/<file>, or ~/.local/share/typed_stories/<file>.
+// Where records and style live:
+//   Linux    $XDG_DATA_HOME/typed_stories/<file>, or ~/.local/share/typed_stories/<file>
+//   Windows  %APPDATA%\typed_stories\<file>
 // Returns 0 (and an empty path) when there is no home to keep files in.
 int data_path(char *out, size_t cap, const char *file) {
+#ifdef _WIN32
+    const char *appdata = getenv("APPDATA");
+    if (appdata && *appdata) { snprintf(out, cap, "%s\\typed_stories\\%s", appdata, file); return 1; }
+#endif
     const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
     if (xdg && *xdg)        snprintf(out, cap, "%s/typed_stories/%s", xdg, file);
     else if (home && *home) snprintf(out, cap, "%s/.local/share/typed_stories/%s", home, file);
@@ -26,8 +44,13 @@ int data_path(char *out, size_t cap, const char *file) {
 void mkdirs_for(const char *file) {
     char tmp[1024];
     snprintf(tmp, sizeof tmp, "%s", file);
-    for (char *p = tmp + 1; *p; p++)
+    for (char *p = tmp + 1; *p; p++) {
+#ifdef _WIN32
+        if ((*p == '/' || *p == '\\') && p[-1] != ':') { char c = *p; *p = '\0'; _mkdir(tmp); *p = c; }
+#else
         if (*p == '/') { *p = '\0'; mkdir(tmp, 0755); *p = '/'; }
+#endif
+    }
 }
 
 void *xrealloc(void *p, size_t n) {
@@ -82,12 +105,17 @@ void phrase_push(Phrase **arr, int *n, int *cap, const char *text, int tier) {
 
 __attribute__((format(printf, 3, 4), noreturn))
 void die_at(const char *file, int line, const char *fmt, ...) {
+    char msg[1024];
+    int n = snprintf(msg, sizeof msg, "%s:%d: ", file, line);
     va_list ap;
-    fprintf(stderr, "%s:%d: ", file, line);
     va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
+    vsnprintf(msg + n, sizeof msg - n, fmt, ap);
     va_end(ap);
-    fputc('\n', stderr);
+    fprintf(stderr, "%s\n", msg);
+#ifdef _WIN32
+    // the Windows build has no console: say it in a box
+    MessageBoxA(NULL, msg, "typed_stories: a pack file has a problem", MB_OK | MB_ICONERROR);
+#endif
     exit(1);
 }
 

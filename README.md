@@ -63,7 +63,21 @@ make run-tty    # терминал
 make RAYLIB_CFLAGS=-I/путь/raylib/src RAYLIB_LIBS="/путь/raylib/src/libraylib.a -lGL -lm -lpthread -ldl -lrt -lX11"
 ```
 
-Шрифты JetBrains Mono, IM Fell English, UnifrakturMaguntia и VT323 лежат в `assets/fonts` (все под SIL OFL 1.1, она разрешает включать их в игру, файлы лицензий рядом). Игра ищет `assets/` в текущей папке, а потом рядом с исполняемым файлом.
+### Windows
+
+Под Windows собирается только окно (`game.exe`), терминальная версия там не нужна. Собирать можно прямо на Linux кросс-компилятором mingw-w64, сама Windows для этого не нужна:
+
+```
+nix develop .#windows     # на NixOS; на других Linux: пакет gcc-mingw-w64-x86-64
+make raylib-win           # один раз: готовая сборка raylib для Windows
+make dist-windows         # game.exe + packs + assets -> typed_stories-windows.zip
+```
+
+Ещё проще: GitHub Actions собирает Windows-версию при каждом пуше в main. Её можно скачать во вкладке Actions: последний запуск `windows`, архив `typed_stories-windows`. Если запушить тег вида `v0.1`, zip прикрепится к релизу.
+
+Распакуй архив и запусти `game.exe`. Рекорды и стиль сохраняются в `%APPDATA%\typed_stories`. Если в файлах паков ошибка, игра покажет её в окошке.
+
+, IM Fell English, UnifrakturMaguntia и VT323 лежат в `assets/fonts` (все под SIL OFL 1.1, она разрешает включать их в игру, файлы лицензий рядом). Игра ищет `assets/` в текущей папке, а потом рядом с исполняемым файлом.
 
 ## Свои сценарии
 

@@ -25,7 +25,11 @@ Date today(void) {
         mktime(&tmv);
     } else {
         time_t t = time(NULL);
+#ifdef _WIN32
+        localtime_s(&tmv, &t);
+#else
         localtime_r(&t, &tmv);
+#endif
     }
     strftime(d.iso, sizeof d.iso, "%Y-%m-%d", &tmv);
     strftime(d.pretty, sizeof d.pretty, "%a %d %b %Y", &tmv);

@@ -1,7 +1,6 @@
 // game: playing a run: input loop, outcomes, meters, summary, menu.
 // Knows nothing about the screen: it fills views from ui.h and reads keys.
 #include <time.h>
-#include <unistd.h>
 
 #include "game.h"
 #include "activity.h"
@@ -542,8 +541,10 @@ int choose_pack(void) {
     }
 }
 
+// Free play: something different every time (the clock, and where the stack happens to be).
 static uint64_t fresh_seed(void) {
-    return rng_mix((uint64_t)time(NULL) ^ rng_mix((uint64_t)(now() * 1e6)) ^ ((uint64_t)getpid() << 40));
+    int here;
+    return rng_mix((uint64_t)time(NULL) ^ rng_mix((uint64_t)(now() * 1e6)) ^ rng_mix((uint64_t)(uintptr_t)&here));
 }
 
 // The day is built phase by phase, and each event picks its variant only when

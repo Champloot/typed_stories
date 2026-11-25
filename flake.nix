@@ -7,7 +7,15 @@
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
+      # the mingw-w64 cross compiler, for game.exe
+      mingw = pkgs.pkgsCross.mingwW64.buildPackages.gcc;
     in {
+      # nix develop .#windows, then: make raylib-win && make windows
+      devShells.${system}.windows = pkgs.mkShell {
+        nativeBuildInputs = [ mingw pkgs.curl pkgs.unzip pkgs.zip ];
+        WIN_CC = "x86_64-w64-mingw32-gcc";
+      };
+
       # nix develop (или direnv с `use flake`) — окружение для make
       devShells.${system}.default = pkgs.mkShell {
         # Инструменты сборки. gcc и make уже входят в mkShell (stdenv),
