@@ -6,3 +6,4 @@ game.exe
 third_party/
 dist/
 typed_stories-windows.zip
+*.sublime-workspace

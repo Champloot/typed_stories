@@ -1,0 +1,40 @@
+{
+    "folders": [
+        {
+            "path": "."
+        }
+    ],
+    "build_systems": [
+        {
+            "name": "typed_stories",
+            "working_dir": "$project_path",
+            "windows": {
+                "shell_cmd": "build.bat && start \"\" game.exe"
+            },
+            "linux": {
+                "shell_cmd": "make && ./game"
+            },
+            "file_regex": "^(src[\\\\/][^:]+):([0-9]+):([0-9]+): (.*)$",
+            "variants": [
+                {
+                    "name": "Build only",
+                    "windows": {
+                        "shell_cmd": "build.bat"
+                    },
+                    "linux": {
+                        "shell_cmd": "make"
+                    }
+                },
+                {
+                    "name": "Run",
+                    "windows": {
+                        "shell_cmd": "start \"\" game.exe"
+                    },
+                    "linux": {
+                        "shell_cmd": "./game"
+                    }
+                }
+            ]
+        }
+    ]
+}

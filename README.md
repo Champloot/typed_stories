@@ -73,6 +73,8 @@ make raylib-win           # один раз: готовая сборка raylib 
 make dist-windows         # game.exe + packs + assets -> typed_stories-windows.zip
 ```
 
+Прямо на Windows, если есть gcc (MinGW-w64): запусти `build.bat`. Он один раз скачает raylib и соберёт `game.exe`, make для этого не нужен. В Sublime Text открой `typed_stories.sublime-project` (Project → Open Project): `Ctrl+B` собирает и запускает игру, `Ctrl+Shift+B` даёт выбрать «только собрать» или «только запустить».
+
 Ещё проще: GitHub Actions собирает Windows-версию при каждом пуше в main. Её можно скачать во вкладке Actions: последний запуск `windows`, архив `typed_stories-windows`. Если запушить тег вида `v0.1`, zip прикрепится к релизу.
 
 Распакуй архив и запусти `game.exe`. Рекорды и стиль сохраняются в `%APPDATA%\typed_stories`. Если в файлах паков ошибка, игра покажет её в окошке.
