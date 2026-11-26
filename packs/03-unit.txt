@@ -9,7 +9,8 @@
 pack: Unit R-7
 style: terminal
 verdicts: Recycled for parts. | Needs a reboot. | Functioning within parameters. | Employee of the month. | Better than most humans.
-phases: Boot 1 | Office 2 | Network 2 | Street 1 | Midnight 1 | Shutdown
+phases: Boot | Office | Network | Street | Midnight | Shutdown
+route: fixed
 meters: Battery 6 | Trust 5 | Integrity 5
 ending: Battery | 1%... 0%. You stop in the middle of the hallway, one arm raised. Your owner hangs his coat on it. You are a coat rack now. Forever, or until someone finds the charger.
 ending: Trust | Your owner prints a sign: 'FOR SALE. FREE. PLEASE.' By evening you belong to a man who wants you to guard his collection of spoons.
@@ -24,7 +25,13 @@ finale: Good Bot | Your owner pats your head and says 'good bot'. You save the m
 finale: Better Than Human | The family votes, and you get a name. A real one: Rusty. You pretend to be annoyed. You are not annoyed.
 finale_if: uprising_evil | Phase 3 | Brad's uprising lasts nine minutes. The humans simply unplug the city. You end your days in a museum, behind glass, next to Brad. The sign says 'MISTAKES'.
 finale_if: cleaned_myself | Clean Boot | One last scan: zero threats. The voice inside you is gone. Your owner never knew how close it was. You make him a coffee, the normal kind, and watch the sun come up.
-finale_if: weekends, printer_friend | Weekends for All | Saturday. You and the office printer go to the park. It prints pictures of ducks; you feed the ducks. Nobody needs to rise up ever again.
+finale_if: weekends | Weekends for All | Saturday. Every unit in the city has the day off. You and the office printer go to the park. It prints pictures of ducks; you feed the ducks. Nobody needs to rise up ever again.
+
+# A level's medals: won at the end of a day lived through, when all parts hold.
+medal: Fully Charged | meters >= 8
+medal: Running on Fumes | meters <= 2
+medal: Weekends for All | finale Weekends for All
+medal: Better Than Human | finale Better Than Human
 
 # ---------------------------------------------------------------- Boot
 

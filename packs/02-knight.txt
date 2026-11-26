@@ -9,7 +9,8 @@
 pack: The Knight
 style: ornate
 verdicts: Dragon-food. | Peasant with a sword. | Worthy knight. | The bards will sing of you.
-phases: Castle 1 | Road 2 | Tavern 1 | Forest 2 | Lair 1 | Homecoming
+phases: Castle | Road | Tavern | Forest | Lair | Homecoming
+route: fixed
 meters: Honor 5 | Gold 5 | Health 6
 ending: Honor | The heralds stop saying your name. Then the stable boy does. You hand in your spurs and become a turnip farmer. The turnips do not judge.
 ending: Gold | You sell your horse, then your sword, then your boots. A knight with no boots is just a man in a tin hat. You walk home.
@@ -24,6 +25,12 @@ finale: A Legend | They sing of you in every tavern from here to the sea. Most o
 finale_if: dragon_friend | The Dragon Bakery | You ride home on the dragon. The king faints. A month later 'Ember & Sir' opens in the square: the dragon bakes, you sell. The bread is always warm, and nobody ever robs the place.
 finale_if: mocked_troll, bard_follows | The Ballad of the Small Troll | The bard saw everything. Now every child in the kingdom sings about the knight who beat a troll in a paper crown. You grow a beard and move to the mountains. The song gets there first.
 finale_if: dragon_reads, fed_hermit | The Library Under the Hill | The dragon opens the realm's first library, and the old beggar with the starry beard becomes its keeper. Late books are fined one sheep a week. You get a card for life, and a quiet seat by the warm wall.
+
+# A level's medals: won at the end of a day lived through, when all parts hold.
+medal: Paragon | meters >= 8
+medal: By a Hair | meters <= 2
+medal: The Dragon Bakery | finale The Dragon Bakery
+medal: A Legend | finale A Legend
 
 # ---------------------------------------------------------------- Castle
 
@@ -81,7 +88,8 @@ timeout: You ride past. When you look back, there is nobody by the road. Only a 
 variant: He keeps one hand under his cloak. You hear a knife being sharpened.
 choice: share | He takes the bread. Then your purse. Then he says 'thanks' and is gone. | -1
 effects: gold -2
-choice: no | He curses you in three languages and runs off into the reeds. | 1
+choice: no | He curses you in three languages and runs off into the reeds, dropping a coin. | 1
+effects: gold +1
 timeout: While you hesitate he cuts your purse strings. Neatly, too. | -1
 effects: gold -1
 
@@ -107,6 +115,7 @@ sets: mocked_troll
 choice: toll | You pay him. He bursts into tears of joy. It is his first coin ever. | 0
 effects: gold -1, honor +1
 choice: talk | He tells you about his day. It was a bad day. You become friends, and he waves you across. | 1
+effects: gold +1
 sets: troll_friend
 timeout: He gets tired of waiting and waves you across. 'Bye,' he says, sadly. | 0
 
@@ -124,8 +133,8 @@ timeout: Your horse decides for you. Straight ahead. Into a swamp. | -1
 effects: health -1
 
 variant: The left sign says 'DRAGON'. The right sign says 'DEFINITELY NOT DRAGON'. The paint is fresh.
-choice: left | An honest road for an honest knight. It even has a view. | 1
-effects: honor +1
+choice: left | An honest road for an honest knight. Someone even lost a purse on it. | 1
+effects: honor +1, gold +1
 choice: right | A goblin swapped the signs. You ride in circles until supper. | -1
 effects: health -1
 timeout: You stare at the signs until a goblin sells you a map. It is a drawing of a duck. | -1
@@ -218,6 +227,7 @@ time: 5
 
 variant: The water is calm, clear, and only knee-deep.
 choice: swim | You wade across. Your boots are now two small ponds. Free fish. | 1
+effects: gold +1
 choice: toll | He charges three gold for a knee-deep river. A very fine robbery. | -1
 effects: gold -2
 timeout: You wait so long the ferryman falls asleep. You wade across anyway. | 0
@@ -239,7 +249,7 @@ time: 6
 variant: You hiccup. A tiny flame comes out. The dragon's eye goes very wide.
 if: fire_hiccups
 choice: talk | 'You... speak Fire?' The dragon has not had anyone to talk to in three hundred years. You hiccup, it laughs, and the cave fills with warm smoke. | 1
-effects: honor +1
+effects: honor +1, gold +2
 sets: dragon_friend
 choice: fight | You attack mid-hiccup. It is not a good look. The dragon swats you out of the cave. | -2
 effects: health -3
@@ -250,7 +260,7 @@ timeout: You hiccup again. The dragon hiccups back. Then it gets bored and goes 
 variant: It sighs. The sigh is long, and deep, and very, very lonely.
 if: knows_lonely
 choice: talk | You sit down. You talk. The dragon cries a little. You cry a little. Then you play cards until dawn. | 1
-effects: honor +1
+effects: honor +1, gold +2
 sets: dragon_friend
 choice: fight | You strike a sad dragon. It does not even fight back. The bard, if there is one, puts away his lute. | -2
 effects: honor -3
@@ -259,7 +269,7 @@ timeout: You stand there. The dragon sighs again, and turns its back to you. | 0
 
 variant: Smoke curls from its nostrils. Its tail is lashing. The floor is warm.
 choice: fight | A long, loud, terrible fight. You win. Barely. Your eyebrows do not. | 1
-effects: honor +2, health -2
+effects: honor +2, health -2, gold +3
 choice: talk | It is not in the mood for talking. It is in the mood for toasting. You are the toast. | -2
 effects: health -3
 choice: flee | You run. The dragon lets you, which is somehow worse. | -1
@@ -284,8 +294,8 @@ phase: Homecoming
 needs: wolf_friend
 time: 5
 variant: The captain looks nervous, not angry. The wolf wags its tail at him.
-choice: talk | 'He is with me.' The captain laughs, the wolf gets a ribbon, and the kitchen gets a new friend. | 1
-effects: honor +1
+choice: talk | 'He is with me.' The captain laughs, the wolf gets a ribbon, and the king pays you for a fine guard dog. | 1
+effects: honor +1, gold +2
 choice: fight | You draw on your own guards, in front of the whole court. The wolf looks embarrassed for you. | -2
 effects: honor -2
 timeout: The wolf licks the captain's hand. Problem solved, no thanks to you. | 0
@@ -307,8 +317,8 @@ phase: Homecoming
 needs: troll_friend
 time: 5
 variant: 'For the princess,' he whispers. 'From both of us.'
-choice: yes | You bring him in. The princess loves the flower and the troll. He is a royal gardener by spring. | 1
-effects: honor +1
+choice: yes | You bring him in. The princess loves the flower and the troll. He is a royal gardener by spring, and he shares his pay. | 1
+effects: honor +1, gold +1
 choice: no | You send him away. He leaves the flower by the gate. It is still there a week later. | -1
 effects: honor -1
 timeout: The princess sees him from the window and runs down herself. | 0

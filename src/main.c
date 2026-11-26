@@ -13,6 +13,7 @@
 #include "game.h"
 #include "lexicon.h"
 #include "pack.h"
+#include "progress.h"
 #include "records.h"
 #include "style.h"
 #include "ui.h"
@@ -31,6 +32,7 @@ int main(int argc, char **argv) {
     load_words(dir);
     style_load();
     records_load();
+    progress_load();
 
     ui_init();
     int p;

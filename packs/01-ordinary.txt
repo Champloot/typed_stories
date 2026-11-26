@@ -10,7 +10,8 @@
 
 pack: An ordinary day
 verdicts: Worst day ever. Go to bed and try again. | A Monday, in spirit. | An okay day. Nobody got hurt. | A good day. You did good. | A perfect day. Suspiciously perfect.
-phases: Morning 2 | Commute 2 | Work 2 | Walk 2 | Store 2 | Evening 1 | Night
+phases: Morning | Commute | Work | Walk | Store | Evening | Night
+route: fixed
 meters: Nerves 7 | Money 5 | People 5
 ending: Nerves | You snap. You go home, pull the blanket over your head and refuse to be an adult until tomorrow.
 ending: Money | Your card is declined. Again. You walk home and have cereal for dinner. Without milk.
@@ -25,7 +26,13 @@ finale: Just a Day | Nothing exploded. Nothing sparkled. You brush your teeth, s
 finale: A Good One | You fall asleep fast, for once. Somewhere a neighbor is humming. The day was kind to you, and you were kind to it.
 finale: Legend of the Block | Tomorrow the neighbors will talk about you, in a good way. You sleep like a cat on a radiator.
 finale_if: dog_poisoned, milk_burned | Smells Like Today | The flat smells of burnt milk. The vet's bill is on the table. The dog sleeps it off on your feet. He has forgiven you. The milk never will.
-finale_if: tuba_buddy, good_sausage | Block Party | At nine the neighbor knocks, tuba in hand. You bring the sausages. By ten the whole floor is in the corridor, eating and dancing to the worst polka ever played. Best night of the year.
+finale_if: neighbor_helped or tuba_buddy, good_sausage | Block Party | At nine the neighbor from the lift knocks, a tuba in his hands. You bring the sausages. By ten the whole floor is in the corridor, eating and dancing to the worst polka ever played. Best night of the year.
+
+# A level's medals: won at the end of a day lived through, when all parts hold.
+medal: Zen | meters >= 8
+medal: Hanging by a Thread | meters <= 2
+medal: Block Party | finale Block Party
+medal: Legend of the Block | finale Legend of the Block
 
 # ---------------------------------------------------------------- Morning
 
@@ -41,6 +48,7 @@ show: snooze
 effects: nerves +1
 choice: get_up | You are up at seven on a Saturday. For no reason. The birds are confused. | 0
 show: get_up
+sets: up_early
 timeout: You let it ring. The neighbor knocks on the wall. Twice. | -1
 show: knock
 effects: people -1
@@ -53,6 +61,7 @@ effects: nerves -1
 sets: late_for_work
 choice: get_up | You are up. You are a functioning adult. | 1
 show: get_up
+sets: up_early
 act: mash 3.5 14 get out from under the blanket!
 fail: The blanket wins. You wake up again at 9:40. | -1
 show: snooze
@@ -67,6 +76,7 @@ sets: late_for_work
 scenario: You put milk on the stove for breakfast.
 stage: kitchen
 phase: Morning
+needs: up_early
 time: 3
 
 variant: The milk starts to rise. Fast.
@@ -102,13 +112,14 @@ show: warm
 scenario: Someone knocks on the door. You look through the peephole.
 stage: peephole
 phase: Morning
+needs: !up_early
 time: 4
 
 variant: A courier is holding a box with your name on it.
 props: who=courier
 choice: open | Your parcel! It is much smaller than the box. | 1
 show: open
-effects: nerves +1
+effects: nerves +1, money +1
 choice: ignore | Later you find a note: 'Sorry we missed you.' You were right there. | -1
 show: leave
 effects: money -1
@@ -181,6 +192,7 @@ show: close
 scenario: The green light is blinking at the crosswalk.
 stage: crosswalk
 phase: Commute
+needs: neighbor_helped or tuba_buddy
 time: 3
 
 variant: The road is empty.
@@ -213,11 +225,13 @@ show: red
 scenario: Taxi driver: 'Left or right here?'
 stage: taxi
 phase: Commute
+needs: !neighbor_helped, !tuba_buddy
 time: 4
 
 variant: The navigator on his phone says: 'Turn left.'
 props: nav=left
 choice: left | Left. The navigator approves. You arrive on time. | 1
+effects: money +1
 show: left
 choice: right | Right. The navigator sighs and recalculates. So does the meter. | -1
 show: right
@@ -232,6 +246,7 @@ choice: left | Left. You see a lot of the suburbs. The meter sees a lot of money
 show: left
 effects: money -1
 choice: right | Right. The driver nods. 'Smart. You should drive.' | 1
+effects: money +1
 show: right
 timeout: You hesitate. The driver goes straight, into the rush hour. The meter is running. | -1
 show: straight
@@ -271,6 +286,7 @@ effects: nerves -1
 scenario: The whole office gathers around a cake and starts to sing.
 stage: cake
 phase: Work
+needs: !late_for_work
 time: 6
 
 variant: The cake says: HAPPY BIRTHDAY OLGA.
@@ -302,6 +318,7 @@ timeout: You stand there smiling while everyone sings at you. It lasts forever. 
 scenario: The office coffee machine blinks red.
 stage: coffee
 phase: Work
+needs: !late_for_work
 time: 4
 
 variant: The screen says: NO WATER.
@@ -340,6 +357,7 @@ variant: It is a sock.
 props: dog=chew item=sock
 choice: drop_it | The dog drops it. It was a sock. Not yours. | 1
 show: drop
+sets: dog_listened
 choice: allow_eat | The dog finishes the sock. You wish it good digestion. So will the vet. | -1
 show: eat
 effects: money -1
@@ -351,6 +369,7 @@ variant: It is a stick.
 props: dog=chew item=stick
 choice: drop_it | The dog drops the stick and looks at you like you cancelled Christmas. | 0
 show: drop
+sets: dog_listened
 choice: allow_eat | The dog chews the stick happily. It is just a stick. | 0
 timeout: The dog decides for you. It is still a stick. | 0
 
@@ -358,6 +377,7 @@ variant: You can't see what it is. It smells of sausage. There are more pieces i
 props: dog=chew item=sausage
 choice: drop_it | The dog drops it. You notice a strange blue powder on it. Good call. | 1
 show: drop
+sets: dog_listened
 choice: allow_eat | The dog eats it. Ten minutes later you are running to the vet. | -2
 show: eat
 effects: money -2, nerves -1
@@ -370,6 +390,7 @@ sets: dog_poisoned
 
 scenario: A stranger stops and reaches out to pet your dog.
 phase: Walk
+needs: dog_listened, !dog_poisoned
 stage: walk
 time: 5
 
@@ -409,6 +430,7 @@ effects: nerves -1
 
 scenario: Your dog sees a squirrel and goes stiff.
 phase: Walk
+needs: !dog_listened, !dog_poisoned
 stage: walk
 time: 4
 
@@ -476,7 +498,7 @@ variant: The label says it was made today.
 props: made=today
 choice: buy + yes | You buy two. They smell incredible. Dinner is sorted. | 1
 show: buy
-effects: money -1
+effects: money -1, money +1
 sets: good_sausage
 choice: no | You walk away. The man behind you buys all of it, very happily. | 0
 show: walk_away
@@ -490,6 +512,7 @@ show: buy
 effects: money -1
 sets: bad_sausage
 choice: no | The deli guy nods slowly. He respects you now. | 1
+effects: money +1
 show: walk_away
 timeout: It sells out while you think. You dodged something. | 0
 show: sold_out
@@ -498,6 +521,7 @@ show: sold_out
 scenario: The self-checkout yells: UNEXPECTED ITEM IN THE BAGGING AREA.
 stage: checkout
 phase: Store
+needs: good_sausage or bad_sausage
 time: 5
 
 variant: There is nothing in the bagging area.
@@ -526,11 +550,13 @@ effects: nerves -1, people -1
 scenario: The cashier asks: 'Do you need a bag?'
 stage: cashier
 phase: Store
+needs: !good_sausage, !bad_sausage
 time: 4
 
 variant: You brought your own bag.
 props: bag=own
 choice: no | Bag declined. Eco-points +1. | 1
+effects: money +1
 show: no_bag
 choice: yes | Another bag for the bag of bags at home. | 0
 show: bag
@@ -564,6 +590,7 @@ props: call=mom missed=3
 choice: answer | 'Finally! Did you eat?' You did not. You talk for an hour. It is nice. | 1
 show: answer
 effects: people +1
+sets: mom_talked
 choice: decline | Mom calls your neighbor instead. The neighbor knocks. | -2
 show: decline
 effects: people -2
@@ -586,13 +613,14 @@ timeout: It rings out. You call back later. All good. | 0
 scenario: A friend texts: 'dinner? where?'
 stage: phone
 phase: Evening
+needs: !mom_talked
 time: 4
 
 variant: Last time you said 'anything', you ended up at a raw vegan karaoke bar.
 props: chat=karaoke
 choice: pizza | Pizza. Simple. Perfect. Nobody sings. | 1
 show: pizza
-effects: people +1
+effects: people +1, money +1
 choice: anything | Raw vegan karaoke. Again. You sing a song about kale. | -1
 show: anything
 effects: money -1

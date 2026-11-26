@@ -116,6 +116,10 @@ def parse_pack(path, lex):
         elif k == "variant": newvar(norm_ws(v) or None)
         elif k == "on_timeout": var()["mode"] = v
         elif k == "play": cur["play"] = v
+        elif k == "route": pk["fixed"] = v == "fixed"
+        elif k == "medal":
+            name, what = [x.strip() for x in v.split("|")]
+            pk.setdefault("medals", []).append((name, what))
         elif k == "act":
             bits = v.split(" ", 2); n = None; text = bits[2] if len(bits) > 2 else ""
             if text.split(" ")[0].isdigit(): n = int(text.split(" ")[0]); text = text.split(" ", 1)[1] if " " in text else ""
@@ -218,6 +222,7 @@ class World:
     """What persists between runs: phrase heat, word days, records."""
     def __init__(self):
         self.heat, self.word_days, self.best, self.day = {}, set(), {}, {}
+        self.medals = set()         # (pack, medal) won so far
 
 # ------------------------------------------------------------------ the terminal
 
@@ -227,7 +232,7 @@ class Game:
         self.pid, self.fd = pty.fork()
         if self.pid == 0:
             fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
-            os.chdir(PROJ); os.environ.update(TERM="xterm-color", HOME=home, TYPED_STORIES_DATE=date, TYPED_STORIES_CONFIG=config)
+            os.chdir(PROJ); os.environ.update(TERM="xterm-color", HOME=home, TYPED_STORIES_DATE=date, TYPED_STORIES_CONFIG=config, TYPED_STORIES_UNLOCK="1")
             for k in ("XDG_DATA_HOME", "LINES", "COLUMNS"): os.environ.pop(k, None)
             os.execv(os.path.join(PROJ, "game-tty"), ["./game-tty", PACKS])
         self.pump(0.5)
@@ -289,6 +294,9 @@ def play_run(g, world, packfile, key, strategy, today=False, log=False):
     meters = [s for _, s in pk["meters"]]; ended = None; word_used = False
     phase_names = [n.upper() for n, _ in pk["phases"]]
     cur_phase, snap, seen_in_phase, seen, last_total, played = None, set(), [], [], None, 0
+    # a level: every scene in phase order, then file order, each if it is open when it comes up
+    route = [x for ph, _ in pk["phases"] for x in pk["scen"] if x["phase"] == ph] if pk["phases"] else list(pk["scen"])
+    rpos = 0
 
     def status_expected():
         s = "  ".join(f"{pk['meters'][i][0]} {meters[i]}{'!' if meters[i] <= 2 else ''}" for i in range(len(meters)))
@@ -346,12 +354,17 @@ def play_run(g, world, packfile, key, strategy, today=False, log=False):
         text, _ = block(L, 3)
         if text not in index: probs.append(f"#{i}: unknown screen text {text!r}"); break
         sc, v = index[text]; seen.append((sc["title"], v["detail"]))
-        if pk["phases"] and ph_name != cur_phase:
+        if pk.get("fixed"):
+            while rpos < len(route) and route[rpos] is not sc and not scen_open(route[rpos], flags): rpos += 1
+            chk(rpos < len(route) and route[rpos] is sc, f"#{i}: {sc['title'][:40]!r} out of the route's order")
+            if rpos < len(route) and route[rpos] is sc: rpos += 1
+            cur_phase = ph_name
+        elif pk["phases"] and ph_name != cur_phase:
             if cur_phase: check_phase(cur_phase, snap, seen_in_phase)
             skipped(phase_names.index(ph_name))
             cur_phase, snap = ph_name, set(flags); seen_in_phase.clear()
         seen_in_phase.append((sc["title"], bool(sc["needs"])))
-        if sc["needs"]: chk(holds(sc["needs"], snap if pk["phases"] else flags), f"#{i}: unlocked {sc['title'][:30]!r} without its flags")
+        if sc["needs"]: chk(holds(sc["needs"], snap if pk["phases"] and not pk.get("fixed") else flags), f"#{i}: unlocked {sc['title'][:30]!r} without its flags")
         chk(v in open_variants(sc, flags), f"#{i}: variant {v['detail']!r} shown, flags {sorted(flags)}")
         played += 1; st["n"] += 1
         ms = [c["mark"] for c in v["choices"]] + ([v["timeout"][1]] if v["mode"] == "text" else []) + [c["fail"][1] for c in v["choices"] if c.get("fail")]
@@ -474,10 +487,14 @@ def play_run(g, world, packfile, key, strategy, today=False, log=False):
 
     # end of the day
     chk((finale_seen is not None) == (ended is None and bool(pk["finales"])), f"finale shown: {finale_seen!r}, ended early: {ended is not None}")
-    if pk["phases"] and ended is None:
+    if pk.get("fixed") and ended is None:
+        left = [x["title"][:30] for x in route[rpos:] if scen_open(x, flags)]
+        chk(not left, f"the route ended with open scenes left: {left}")
+    elif pk["phases"] and ended is None:
         if cur_phase: check_phase(cur_phase, snap, seen_in_phase)
         skipped(len(phase_names))
-    if ended is None and last_total is not None: chk(last_total == played, f"last header total {last_total}, played {played}")
+    # a level's total is a forecast: a later choice can close a scene it counted
+    if ended is None and last_total is not None and not pk.get("fixed"): chk(last_total == played, f"last header total {last_total}, played {played}")
     T = g.text()
     span, got = st["best"] - st["worst"], st["marks"] - st["worst"]
     rating = (got * 20 + span) // (2 * span) if span > 0 else 10
@@ -508,6 +525,20 @@ def play_run(g, world, packfile, key, strategy, today=False, log=False):
         dprev = world.day.get((DATE, pk["name"]))
         if dprev is None or score > dprev: world.day[(DATE, pk["name"])] = score
         chk(f"Today: best {world.day[(DATE, pk['name'])]}" in T, "today line")
+    # medals: won when the day was lived through and every part holds
+    for name, what in pk.get("medals", []):
+        now = ended is None
+        for part in what.split(" and "):
+            if part.startswith("meters >= "): now &= all(m >= int(part[10:]) for m in meters)
+            elif part.startswith("meters <= "): now &= all(m <= int(part[10:]) for m in meters)
+            elif part.startswith("rating >= "): now &= rating >= int(part[10:])
+            elif part.startswith("finale "): now &= finale_seen == part[7:]
+            elif part.startswith("flags "): now &= holds(cond(part[6:]), flags)
+        before = (pk["name"], name) in world.medals
+        line = f"Medal: {'*' if now or before else '.'} {name}" + (" NEW!" if now and not before else "")
+        chk(norm_ws(line) in norm_ws(T), f"medal line {line!r} not on the summary")
+        if now: world.medals.add((pk["name"], name))
+        if now and log: print(f"  medal won: {name}")
     g.send(b" "); g.pump(0.4)
     chk("choose who you are today" in g.text(), "did not return to the menu")
     return probs, dict(seen=seen, rating=rating, score=score, ended=ended, avg=avg, flags=flags, finale=finale_seen, games=games)

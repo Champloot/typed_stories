@@ -25,7 +25,7 @@ const Variant *pick_variant(const Scenario *s, uint64_t flags, Rng *rng) {
     return NULL;
 }
 
-static int scenario_open(const Scenario *s, uint64_t flags) {
+int scenario_open(const Scenario *s, uint64_t flags) {
     if (s->has_needs && !cond_holds(&s->needs, flags)) return 0;
     for (int i = 0; i < s->nvariants; i++)
         if (!s->variants[i].has_cond || cond_holds(&s->variants[i].cond, flags)) return 1;
@@ -34,6 +34,10 @@ static int scenario_open(const Scenario *s, uint64_t flags) {
 
 // Packs without phases: pinned scenarios go to the ends, the rest is shuffled in between.
 int order_by_slots(const Pack *p, int *order, uint64_t seed) {
+    if (p->fixed) {             // a level without phases: the file's order
+        for (int i = 0; i < p->count; i++) order[i] = i;
+        return p->count;
+    }
     int n = 0, first = -1, last = -1;
     for (int i = 0; i < p->count; i++) {
         if (p->scen[i].slot == SLOT_FIRST)     first = i;
@@ -55,6 +59,12 @@ int order_by_slots(const Pack *p, int *order, uint64_t seed) {
 // 'pick' random regular scenarios plus every unlocked scene ('needs:') that
 // is open now, shuffled together.
 int build_phase(const Pack *p, int ph, uint64_t flags, int *out, uint64_t seed) {
+    if (p->fixed) {             // a level: every scene, in file order; 'needs' is checked as each comes up
+        int n = 0;
+        for (int i = 0; i < p->count; i++)
+            if (p->scen[i].phase == ph) out[n++] = i;
+        return n;
+    }
     int *pool = xrealloc(NULL, (size_t)p->count * sizeof *pool);
     int m = 0, n = 0;
     for (int i = 0; i < p->count; i++) {
@@ -85,7 +95,7 @@ int planned_after(const Pack *p, int ph_from, uint64_t flags) {
             if (s->phase != ph || !scenario_open(s, flags)) continue;
             if (s->has_needs) u++; else m++;
         }
-        int pick = cfg.scenes_per_phase ? cfg.scenes_per_phase : p->phases[ph].pick;
+        int pick = p->fixed ? 0 : cfg.scenes_per_phase ? cfg.scenes_per_phase : p->phases[ph].pick;
         t += (pick && pick < m ? pick : m) + u;
     }
     return t;

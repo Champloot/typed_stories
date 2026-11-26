@@ -312,6 +312,51 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
             pk->finale_title[pk->nfinales] = xstrdup(parts[0]);
             pk->finale_text[pk->nfinales] = xstrdup(parts[1]);
             pk->nfinales++;
+        } else if (!strcmp(key, "route")) {
+            if (!strcmp(val, "fixed")) pk->fixed = 1;
+            else if (!strcmp(val, "random")) pk->fixed = 0;
+            else die_at(path, lineno, "'route' is 'fixed' (a level: every scene in order) or 'random'");
+        } else if (!strcmp(key, "medal")) {
+            // medal: Name | meters >= 8 and finale A Legend and flags dragon_friend and rating >= 9
+            if (pk->nmedals == MAX_MEDALS) die_at(path, lineno, "at most %d medals", MAX_MEDALS);
+            char *parts[3];
+            int n = split_on(val, '|', parts, 2);
+            if (n != 2 || !*parts[0] || !*parts[1]) die_at(path, lineno, "'medal' is: name | what it takes");
+            Medal *md = &pk->medals[pk->nmedals];
+            memset(md, 0, sizeof *md);
+            md->name = xstrdup(parts[0]);
+            md->rating_min = -1;
+            md->src_line = lineno;
+            for (int i = 0; i < pk->nmedals; i++)
+                if (!strcmp(pk->medals[i].name, md->name)) die_at(path, lineno, "two medals named '%s'", md->name);
+            char *rest = parts[1];
+            while (rest && *rest) {
+                char *and = strstr(rest, " and ");
+                if (and) *and = '\0';
+                char *part = trim(rest);
+                rest = and ? and + 5 : NULL;
+                int v;
+                if (!strncmp(part, "meters >= ", 10) || !strncmp(part, "meters <= ", 10)) {
+                    if (md->meters_cmp) die_at(path, lineno, "'meters' twice in one medal");
+                    if (!pk->nmeters) die_at(path, lineno, "'meters' in a medal, but the pack has no meters");
+                    if (!parse_int(trim(part + 10), 0, METER_MAX, &v)) die_at(path, lineno, "meters are compared with 0 to %d", METER_MAX);
+                    md->meters_cmp = part[7] == '>' ? 1 : -1;
+                    md->meters_val = v;
+                } else if (!strncmp(part, "rating >= ", 10)) {
+                    if (!parse_int(trim(part + 10), 0, 10, &v)) die_at(path, lineno, "rating is 0 to 10");
+                    md->rating_min = v;
+                } else if (!strncmp(part, "finale ", 7)) {
+                    md->finale = xstrdup(trim(part + 7));
+                } else if (!strncmp(part, "flags ", 6)) {
+                    char buf[LINE_BUF];
+                    snprintf(buf, sizeof buf, "%s", part + 6);
+                    parse_cond(path, lineno, pk, buf, &md->flags);
+                    md->has_flags = 1;
+                } else {
+                    die_at(path, lineno, "a medal takes: meters >= N, meters <= N, rating >= N, finale Title, flags cond (joined with 'and'); got '%s'", part);
+                }
+            }
+            pk->nmedals++;
         } else if (!strcmp(key, "finale_if")) {
             char *parts[4];
             int n = split_on(val, '|', parts, 3);
@@ -562,6 +607,14 @@ static void load_pack_file(const char *dir, const char *fname, Pack *pk) {
     if (!pk->style) pk->style = xstrdup(pack_styles[0]);
     if (pk->nfinale_if && !pk->nfinales)
         die_at(path, lineno, "'finale_if' needs at least one plain 'finale' for the days its flags don't match");
+    for (int i = 0; i < pk->nmedals; i++) {     // a medal's finale must be one of the pack's
+        const Medal *md = &pk->medals[i];
+        if (!md->finale) continue;
+        int ok = 0;
+        for (int f = 0; f < pk->nfinales; f++) ok |= !strcmp(pk->finale_title[f], md->finale);
+        for (int f = 0; f < pk->nfinale_if; f++) ok |= !strcmp(pk->finale_if_title[f], md->finale);
+        if (!ok) die_at(path, md->src_line, "medal '%s': there is no finale '%s'", md->name, md->finale);
+    }
 
     for (int m = 0; m < pk->nmeters; m++)
         if (!pk->meter_endings[m])

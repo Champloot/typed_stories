@@ -284,6 +284,7 @@ void ui_menu(const MenuView *v) {
     for (int i = 0; i < v->npacks; i++) {
         view.menu.packs[i].name = keep(v->packs[i].name);
         view.menu.packs[i].style = keep(v->packs[i].style);
+        for (int m = 0; m < v->packs[i].nmedals; m++) view.menu.packs[i].medal[m] = keep(v->packs[i].medal[m]);
     }
     view.menu.date = keep(v->date);
     view.menu.word = keep(v->word);
@@ -382,6 +383,7 @@ void ui_summary(const SummaryView *v) {
     view.sum.pack = keep(v->pack);
     view.sum.verdict = keep(v->verdict);
     view.sum.word = keep(v->word);
+    for (int i = 0; i < v->nmedals; i++) view.sum.medal[i] = keep(v->medal[i]);
     for (int i = 0; i < v->meters.nmeters; i++) view.sum.meters.meter_names[i] = keep(v->meters.meter_names[i]);
 }
 
@@ -773,20 +775,51 @@ static void draw_menu(void) {
     text(font, "a typing game of short stories. answer in your own words.", L, y, u * 0.7f, C_DIM);
     y += u * 2.6f;
     for (int i = 0; i < v->npacks; i++) {
+        const MenuPack *mp = &v->packs[i];
         char key[8], rec[80] = "";
         snprintf(key, sizeof key, "%d", i + 1);
-        float w = chip(key, L, y, u * 0.75f, C_ACCENT, C_ACCENT, NONE);
+        float w = chip(key, L, y, u * 0.75f, mp->locked ? C_FAINT : C_ACCENT, mp->locked ? C_FAINT : C_ACCENT, NONE);
+        if (mp->locked) {               // a padlock, and the name greyed out
+            float lx = L + w + u * 1.0f, ly = y + u * 0.45f;
+            DrawRing((Vector2){ lx + u * 0.35f, ly }, u * 0.22f, u * 0.32f, 180, 360, 16, col(C_FAINT));
+            DrawRectangleRounded((Rectangle){ lx, ly, u * 0.7f, u * 0.6f }, 0.2f, 4, col(C_FAINT));
+            text(font, mp->name, lx + u * 1.3f, y + u * 0.2f, u * 0.85f, C_FAINT);
+            text(font, "pass the level before", L + W - text_w(font, "pass the level before", u * 0.65f), y + u * 0.3f, u * 0.65f, C_FAINT);
+            y += u * 1.9f;
+            continue;
+        }
         // each story's name in its own look
-        int t = theme_of(v->packs[i].style);
+        int t = theme_of(mp->style);
         const Theme *pt = &themes[t];
         Font f = fonts[pt->head];
         float size = u * 0.95f * pt->scale, dy = t == TH_TERMINAL ? -u * 0.2f : t == TH_ORNATE ? -u * 0.12f : 0;
-        DrawTextEx(f, v->packs[i].name, (Vector2){ L + w + u * 0.8f, y + u * 0.15f + dy }, size, size * 0.02f, col(pt->menu));
-        if (v->packs[i].best >= 0) snprintf(rec, sizeof rec, "best %d", v->packs[i].best);
-        if (v->packs[i].today >= 0)
-            snprintf(rec + strlen(rec), sizeof rec - strlen(rec), "%stoday %d", *rec ? "   " : "", v->packs[i].today);
-        if (*rec) text(font, rec, L + W - text_w(font, rec, u * 0.7f), y + u * 0.3f, u * 0.7f, C_DIM);
+        DrawTextEx(f, mp->name, (Vector2){ L + w + u * 0.8f, y + u * 0.15f + dy }, size, size * 0.02f, col(pt->menu));
+        float nx = L + w + u * 0.8f + MeasureTextEx(f, mp->name, size, size * 0.02f).x + u * 0.6f;
+        if (mp->done) {                 // a tick: passed
+            DrawLineEx((Vector2){ nx, y + u * 0.6f }, (Vector2){ nx + u * 0.25f, y + u * 0.85f }, u * 0.12f, col(C_OK));
+            DrawLineEx((Vector2){ nx + u * 0.25f, y + u * 0.85f }, (Vector2){ nx + u * 0.65f, y + u * 0.3f }, u * 0.12f, col(C_OK));
+        }
+        // medals: gold when won, a ring when not yet
+        float mx = L + W - u * 0.5f;
+        for (int m = mp->nmedals - 1; m >= 0; m--) {
+            Vector2 c = { mx, y + u * 0.55f };
+            if (mp->got[m]) {
+                DrawCircleV(c, u * 0.38f, col(C_WARN));
+                DrawCircleV(c, u * 0.2f, col(ColorAlpha(C_TEXT, 0.35f)));
+            } else {
+                DrawRing(c, u * 0.3f, u * 0.38f, 0, 360, 24, col(C_FAINT));
+            }
+            mx -= u * 1.05f;
+        }
+        if (mp->best >= 0) snprintf(rec, sizeof rec, "best %d", mp->best);
+        if (mp->today >= 0)
+            snprintf(rec + strlen(rec), sizeof rec - strlen(rec), "%stoday %d", *rec ? "   " : "", mp->today);
+        if (*rec) text(font, rec, mx - text_w(font, rec, u * 0.65f) - u * 0.2f, y + u * 0.3f, u * 0.65f, C_DIM);
         y += u * 1.9f;
+    }
+    if (v->all_done) {
+        text(bold, "EVERY LEVEL PASSED. YOU BEAT THE GAME!", L, y, u * 0.85f, C_OK);
+        y += u * 1.4f;
     }
     y += u * 0.8f;
     float w = chip("T", L, y, u * 0.75f, C_DIM, C_FAINT, NONE);
@@ -1076,6 +1109,23 @@ static void draw_summary(void) {
         y += u * 2.0f;
         snprintf(s, sizeof s, "best %d%s", v->today_best, v->new_day ? "  (that's you)" : "");
         stat_row("today", s, y, C_WARN);
+    }
+    if (v->nmedals) {               // the level's medals: new ones throb
+        y += u * 2.0f;
+        text(font, "medals", L, y + u * 0.2f, u * 0.75f, C_DIM);
+        float x = L + u * 7;
+        double t = now();
+        for (int i = 0; i < v->nmedals; i++) {
+            int fresh = v->medal_now[i] && !v->medal_before[i], got = v->medal_now[i] || v->medal_before[i];
+            float r = u * 0.42f * (fresh ? 1 + 0.15f * (float)sin(t * 6) : 1);
+            Vector2 c = { x + u * 0.45f, y + u * 0.55f };
+            if (got) DrawCircleV(c, r, col(C_WARN));
+            else DrawRing(c, r * 0.8f, r, 0, 360, 24, col(C_FAINT));
+            float nw = text_w(font, v->medal[i], u * 0.6f);
+            text(font, v->medal[i], x + u * 1.1f, y + u * 0.25f, u * 0.6f, fresh ? C_WARN : got ? C_TEXT : C_DIM);
+            x += u * 1.1f + nw + u * 0.9f;
+            if (x > L + W - u * 4 && i + 1 < v->nmedals) { x = L + u * 7; y += u * 1.1f; }
+        }
     }
     press(th->any_key);
 }

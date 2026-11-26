@@ -53,6 +53,7 @@ static const Key keys[] = {
     { "grid",   "step",             'd', &cfg.grid_step,        0.02, 1 },
     { "store",  "cart_step",        'd', &cfg.cart_step,        0.05, 5 },
     { "store",  "carts",            'i', &cfg.carts,            0, 3 },
+    { "levels", "unlock_all",       'i', &cfg.unlock_all,       0, 1 },
     { "window", "width",            'i', &cfg.width,            640, 7680 },
     { "window", "height",           'i', &cfg.height,           400, 4320 },
     { "window", "fullscreen",       'i', &cfg.fullscreen,       0, 1 },
@@ -100,6 +101,8 @@ static void read_file(const char *path, FILE *f) {
 }
 
 void config_load(const char *exe_path) {
+    const char *unlock = getenv("TYPED_STORIES_UNLOCK");
+    if (unlock && *unlock == '1') cfg.unlock_all = 1;
     const char *env = getenv("TYPED_STORIES_CONFIG");
     if (env && !strcmp(env, "-")) return;
     char path[1024];

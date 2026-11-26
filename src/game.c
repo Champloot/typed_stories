@@ -6,6 +6,7 @@
 #include "game.h"
 #include "activity.h"
 #include "minigame.h"
+#include "progress.h"
 #include "daily.h"
 #include "day.h"
 #include "match.h"
@@ -456,9 +457,10 @@ static int marks_step(const Run *run, int n) {
 }
 
 // The first special finale whose flags hold, otherwise the one for the rating.
-static void show_finale(const Run *run) {
+// Shows the story's ending; returns its title (NULL if the pack has none).
+static const char *show_finale(const Run *run) {
     const Pack *p = run->p;
-    if (!p->nfinales) return;
+    if (!p->nfinales) return NULL;
     FinaleView v;
     memset(&v, 0, sizeof v);
     v.good = marks_step(run, 3);
@@ -475,12 +477,27 @@ static void show_finale(const Run *run) {
     }
     ui_finale(&v);
     wait_key();
+    return v.title;
+}
+
+// A medal is won at the end of a day lived through, when every part of it holds.
+static int medal_won(const Run *run, const Medal *md, const char *finale, int rating) {
+    const Pack *p = run->p;
+    if (run->ended >= 0) return 0;
+    for (int m = 0; m < p->nmeters; m++) {
+        if (md->meters_cmp > 0 && run->meters[m] < md->meters_val) return 0;
+        if (md->meters_cmp < 0 && run->meters[m] > md->meters_val) return 0;
+    }
+    if (md->finale && (!finale || strcmp(md->finale, finale))) return 0;
+    if (md->has_flags && !cond_holds(&md->flags, run->flags)) return 0;
+    if (md->rating_min >= 0 && rating < md->rating_min) return 0;
+    return 1;
 }
 
 // Rating scales the run's marks between the worst and the best possible run,
 // in integer math so the boundaries are exact. Score adds style and what is
 // left of the meters, and goes into the records.
-static void show_summary(const Run *run, int events) {
+static void show_summary(const Run *run, int events, const char *finale) {
     const Pack *p = run->p;
     const Stats *st = &run->st;
     SummaryView v;
@@ -512,6 +529,17 @@ static void show_summary(const Run *run, int events) {
     v.misses = st->misses;
     v.today_mode = today_mode;
     v.today_best = d ? d->score : v.score;
+
+    // a level: passed, and which medals now
+    if (run->ended < 0) progress_set_done(p->name);
+    v.nmedals = p->nmedals;
+    for (int i = 0; i < p->nmedals; i++) {
+        v.medal[i] = p->medals[i].name;
+        v.medal_before[i] = progress_medal(p->name, p->medals[i].name);
+        v.medal_now[i] = medal_won(run, &p->medals[i], finale, v.rating);
+        if (v.medal_now[i]) progress_add_medal(p->name, p->medals[i].name);
+    }
+    progress_save();
     ui_summary(&v);
     wait_key();
 }
@@ -523,7 +551,17 @@ int choose_pack(void) {
         MenuView v;
         memset(&v, 0, sizeof v);
         v.npacks = npacks;
+        v.all_done = npacks > 0;
         for (int i = 0; i < npacks; i++) {
+            // levels open one after another; config.ini or TYPED_STORIES_UNLOCK opens them all
+            v.packs[i].locked = i > 0 && !progress_done(packs[i - 1].name) && !cfg.unlock_all;
+            v.packs[i].done = progress_done(packs[i].name);
+            v.all_done &= v.packs[i].done;
+            v.packs[i].nmedals = packs[i].nmedals;
+            for (int m = 0; m < packs[i].nmedals; m++) {
+                v.packs[i].medal[m] = packs[i].medals[m].name;
+                v.packs[i].got[m] = progress_medal(packs[i].name, packs[i].medals[m].name);
+            }
             const Result *b = record_best(packs[i].name);
             const Result *t = record_day(d.iso, packs[i].name);
             v.packs[i].name = packs[i].name;
@@ -538,7 +576,7 @@ int choose_pack(void) {
         int ch = ui_key(-1);
         if (ch == 'q') return -1;
         if (ch == 't') { today_mode = !today_mode; continue; }
-        if (ch >= '1' && ch < '1' + npacks) return ch - '1';
+        if (ch >= '1' && ch < '1' + npacks && !v.packs[ch - '1'].locked) return ch - '1';
     }
 }
 
@@ -584,7 +622,12 @@ void run_pack(const Pack *p) {
             e.v = pick_variant(e.s, run.flags, &vr);
             if (!e.v) continue;     // every variant needs flags that are not set
             e.fate = rng_for(run.seed, RNG_FATE, (unsigned)order[k]);
-            int total = played + (n - k) + (p->nphases ? planned_after(p, ph + 1, run.flags) : 0);
+            int left = n - k;
+            if (p->fixed) {         // a level: only the scenes still open count
+                left = 0;
+                for (int j = k; j < n; j++) left += scenario_open(&p->scen[order[j]], run.flags);
+            }
+            int total = played + left + (p->nphases ? planned_after(p, ph + 1, run.flags) : 0);
             int lo, hi;
             mark_range(e.v, &lo, &hi);
             run.st.best += hi;
@@ -594,10 +637,11 @@ void run_pack(const Pack *p) {
         }
     }
     free(order);
+    const char *finale = NULL;
     if (run.ended >= 0) show_ending(&run);
-    else show_finale(&run);
+    else finale = show_finale(&run);
     style_save();
-    show_summary(&run, played);
+    show_summary(&run, played, finale);
     ui_set_hud(NULL);
     ui_set_theme(NULL);
 }

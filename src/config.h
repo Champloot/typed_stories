@@ -39,6 +39,8 @@ typedef struct {
     // [store]
     double cart_step;           // seconds per cell for a cart
     int    carts;               // how many carts roll around
+    // [levels]
+    int    unlock_all;          // 1: every level open from the start (also TYPED_STORIES_UNLOCK=1)
     // [window]
     int    width, height;
     int    fullscreen;

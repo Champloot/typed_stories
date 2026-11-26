@@ -119,7 +119,18 @@ void ui_menu(const MenuView *v) {
     int r = 2 + print_wrapped(2, 4, "TYPING GAME - choose who you are today") + 1;
     for (int i = 0; i < v->npacks; i++) {
         const MenuPack *p = &v->packs[i];
-        mvprintw(r + i, 4, "%d) %s", i + 1, p->name);
+        if (p->locked) {
+            attron(COLOR_PAIR(C_DIM));
+            mvprintw(r + i, 4, "%d) %s   [locked]", i + 1, p->name);
+            attroff(COLOR_PAIR(C_DIM));
+            continue;
+        }
+        mvprintw(r + i, 4, "%d) %s%s", i + 1, p->name, p->done ? "  (passed)" : "");
+        if (p->nmedals) {               // [**..]: medals won and not yet
+            printw("  [");
+            for (int m = 0; m < p->nmedals; m++) addch(p->got[m] ? '*' : '.');
+            printw("]");
+        }
         char rec[80] = "";
         if (p->best >= 0) snprintf(rec, sizeof rec, "best %d", p->best);
         if (p->today >= 0) snprintf(rec + strlen(rec), sizeof rec - strlen(rec), "%stoday %d", *rec ? "  " : "", p->today);
@@ -137,6 +148,11 @@ void ui_menu(const MenuView *v) {
     attroff(COLOR_PAIR(C_DIM));
     mvprintw(r + 1, 4, "q) quit");
     if (v->word) mvprintw(r + 3, 4, "Word of the day: %s", v->word);
+    if (v->all_done) {
+        attron(A_BOLD | COLOR_PAIR(C_OK));
+        mvprintw(r + 5, 4, "Every level passed. You beat the game!");
+        attroff(A_BOLD | COLOR_PAIR(C_OK));
+    }
     refresh();
 }
 
@@ -447,6 +463,13 @@ void ui_summary(const SummaryView *v) {
     attroff(A_BOLD);
     if (v->today_mode)
         mvprintw(r++, 4, "Today:    best %d%s", v->today_best, v->new_day ? " (that's you)" : "");
+    for (int i = 0; i < v->nmedals; i++) {      // MEDAL * Saint (new) / MEDAL . Saint
+        int got = v->medal_now[i] || v->medal_before[i];
+        if (i == 0) r++;
+        if (v->medal_now[i] && !v->medal_before[i]) attron(A_BOLD | COLOR_PAIR(C_WARN));
+        mvprintw(r++, 4, "Medal:    %c %s%s", got ? '*' : '.', v->medal[i], v->medal_now[i] && !v->medal_before[i] ? "  NEW!" : "");
+        if (v->medal_now[i] && !v->medal_before[i]) attroff(A_BOLD | COLOR_PAIR(C_WARN));
+    }
     mvprintw(r + 1, 4, "(press any key)");
     refresh();
 }

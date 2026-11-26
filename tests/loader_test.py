@@ -300,6 +300,18 @@ cfgbad("cfg_not_number", "[time]\nanswer_scale = fast\n", "'answer_scale' must b
 cfgbad("cfg_range", "[catch]\napples = 20\n", "'apples' must be from 1 to 12, got 20")
 cfgbad("cfg_whole", "[day]\nscenes_per_phase = 1.5\n", "'scenes_per_phase' must be a whole number")
 cfgbad("cfg_no_equals", "[day]\nminigames 0\n", "expected 'name = value'")
+# --- levels: route and medals
+FM = M + "finale: Bad | It went badly.\nfinale: Good | It went well.\n"
+bad("route_unknown", "route: maze\n" + V, "'route' is 'fixed' (a level: every scene in order) or 'random'")
+bad("medal_no_rule", FM + "medal: Saint\n", "'medal' is: name | what it takes")
+bad("medal_unknown_rule", FM + "medal: Saint | be nice\n", "a medal takes: meters >= N, meters <= N, rating >= N, finale Title, flags cond")
+bad("medal_no_meters", V + "medal: Saint | meters >= 8\n", "'meters' in a medal, but the pack has no meters")
+bad("medal_meters_range", FM + "medal: Saint | meters >= 11\n", "meters are compared with 0 to 10")
+bad("medal_rating_range", FM + "medal: Saint | rating >= 12\n", "rating is 0 to 10")
+bad("medal_finale_unknown", FM + "medal: Saint | finale Great\n", "medal 'Saint': there is no finale 'Great'")
+bad("medal_twice", FM + "medal: Saint | rating >= 9\nmedal: Saint | rating >= 8\n", "two medals named 'Saint'")
+bad("medal_too_many", FM + "".join(f"medal: m{i} | rating >= 1\n" for i in range(7)), "at most 6 medals")
+bad("medal_unset_flag", FM + "medal: Saint | flags halo\n", "flag 'halo' is checked here, but no outcome sets it")
 # --- words.lst
 def wordbad(name, words, expect):
     bad(name, None, expect, files={"01-t.txt": V, "words.lst": words})
@@ -313,6 +325,7 @@ for nm, files in (("meters_valid", {"01-t.txt": M}),
                   ("needs_builtin_valid", {"01-t.txt": F.replace("needs: said_yes", "needs: wordsmith or today")}),
                   ("stage_play_valid", {"01-t.txt": ST + "\nscenario: S2\ntime: 3\nplay: store 5\nchoice: yes | ok\ngoal: aisle1\ntimeout: late\n"}),
                   ("act_valid", {"01-t.txt": AC.replace("fail: dropped | -1\n", "fail: dropped | -1\nsets: dropped_it\nshow: close\n").replace("choice: no | meh\n", "choice: no | meh\nact: lyrics 5 la la la\n")}),
+                  ("medals_valid", {"01-t.txt": "route: fixed\n" + FM + "medal: Saint | meters >= 8 and finale Good and rating >= 9\nmedal: Rogue | meters <= 2\n"}),
                   ("finales_valid", {"01-t.txt": "style: terminal\n" + FN + "finale_if: said_yes or today | Yes | You said yes.\n"}),
                   ("words_valid", {"01-t.txt": V, "words.lst": "# fine\nhedgehog\nnarwhal\n"}),
                   ("config_valid", {"01-t.txt": V})):

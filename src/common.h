@@ -29,6 +29,7 @@
 #define WORD_BONUS    100   // style for the first answer with the word of the day
 #define MAX_FINALES     8       // story endings by rating, worst -> best
 #define MAX_FINALE_IF   8       // special endings chosen by flags
+#define MAX_MEDALS      6       // goals of a level, like the coins of a Geometry Dash level
 #define WORDSMITH_DAYS 5    // days with the word of the day that unlock the 'wordsmith' flag
 
 /* Flags are what the day remembers: an outcome sets them ('sets:'), and later
@@ -40,6 +41,19 @@ typedef struct {
     int nclauses;
     struct { int n; int flag[MAX_LITS]; int neg[MAX_LITS]; } c[MAX_CLAUSES];
 } Cond;
+
+/* A medal: won at the end of a day lived through (not ended early) when every
+   part holds. Parts left out (0, NULL, -1) don't matter. */
+typedef struct {
+    char *name;
+    int   meters_cmp;           // +1: every meter >= meters_val; -1: every meter <= meters_val; 0: no matter
+    int   meters_val;
+    char *finale;               // the day ended with this finale (its title)
+    int   has_flags;
+    Cond  flags;
+    int   rating_min;           // -1: no matter
+    int   src_line;
+} Medal;
 
 typedef struct {
     int n;
@@ -162,6 +176,9 @@ typedef struct {
     char     *finale_if_title[MAX_FINALE_IF];
     char     *finale_if_text[MAX_FINALE_IF];
     int       nfinale_if;
+    int       fixed;                    // 'route: fixed': every scene in file order whose 'needs' hold (a level)
+    Medal     medals[MAX_MEDALS];
+    int       nmedals;
 } Pack;
 
 #endif

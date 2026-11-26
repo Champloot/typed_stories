@@ -46,6 +46,11 @@ typedef struct {
     const char *name;
     const char *style;          // the pack's look, so the menu can hint at it
     int         best, today;    // scores, -1 if there is no record
+    int         locked;         // the level before it is not passed yet
+    int         done;           // passed: lived through to a finale at least once
+    int         nmedals;
+    const char *medal[MAX_MEDALS];
+    int         got[MAX_MEDALS];
 } MenuPack;
 
 typedef struct {
@@ -54,6 +59,7 @@ typedef struct {
     int         today_mode;
     const char *date;           // "Tue 24 Nov 2026"
     const char *word;           // NULL if there is none
+    int         all_done;       // every level passed: the game is won
 } MenuView;
 
 typedef struct {
@@ -159,6 +165,10 @@ typedef struct {
     int         timeouts, misses;
     int         score, prev_best, new_best;     // prev_best -1 if this is the first
     int         today_mode, today_best, new_day;
+    int         nmedals;        // the pack's medals: won now, won before, or not
+    const char *medal[MAX_MEDALS];
+    int         medal_now[MAX_MEDALS];
+    int         medal_before[MAX_MEDALS];
 } SummaryView;
 
 void ui_init(void);
